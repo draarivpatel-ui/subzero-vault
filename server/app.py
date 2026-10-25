@@ -767,6 +767,8 @@ class Store(object):
         }
         if with_body:
             d["body"] = row["body"]
+        else:
+            d["excerpt"] = re.sub(r"\s+", " ", re.sub(r"(?m)^(## |- |> )", "", row["body"] or ""))[:150]
         return d
 
     @staticmethod

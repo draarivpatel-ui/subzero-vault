@@ -1,0 +1,5 @@
+Fraunces, Plus Jakarta Sans and JetBrains Mono are licensed under the SIL Open Font License 1.1.
+Files are the Latin subsets served by Google Fonts, bundled so the app makes no third party requests.
+Fraunces: https://github.com/undercasetype/Fraunces
+Plus Jakarta Sans: https://github.com/tokotype/PlusJakartaSans
+JetBrains Mono: https://github.com/JetBrains/JetBrainsMono

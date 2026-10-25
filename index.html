@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SubZero Vault | Self-hosted read-it-later, bookmarks and subscription audit</title>
+<meta name="description" content="Keep your articles, bookmarks and highlights on a machine you own. BM25 search, spaced-repetition review, bookmark import and export, and a calculator for the monthly bills it replaces. Runs in the browser or in Docker Compose.">
+<meta name="theme-color" content="#F6F3EC">
+<meta name="color-scheme" content="light">
+<link rel="canonical" href="https://aariv.me/subzero-vault/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="SubZero Vault">
+<meta property="og:title" content="SubZero Vault. Stop renting your reading list.">
+<meta property="og:description" content="Self-hosted read-it-later, bookmarks, highlight review and a subscription audit. One docker compose up, or try it in your browser.">
+<meta property="og:url" content="https://aariv.me/subzero-vault/">
+<meta property="og:image" content="https://aariv.me/subzero-vault/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The SubZero Vault title over a rent ledger totalling 239 dollars 76 cents a year at the example prices.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SubZero Vault. Stop renting your reading list.">
+<meta name="twitter:description" content="Self-hosted read-it-later, bookmarks, highlight review and a subscription audit.">
+<meta name="twitter:image" content="https://aariv.me/subzero-vault/img/og.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23141413'/%3E%3Cpath d='M9 11h14M9 16h14M9 21h8' stroke='%23F6F3EC' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='21' r='3' fill='%23C84B31'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<script>document.documentElement.className += ' js';</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="wrap masthead-row">
+    <a class="wordmark" href="#top" aria-label="SubZero Vault, back to the top">
+      <svg class="wordmark-mark" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false">
+        <rect width="32" height="32" rx="6" class="mark-bg"/>
+        <path d="M9 11h14M9 16h14M9 21h8" class="mark-lines"/>
+        <circle cx="23" cy="21" r="3" class="mark-dot"/>
+      </svg>
+      <span>SubZero Vault</span>
+    </a>
+    <nav class="site-nav" id="site-nav" aria-label="Sections">
+      <a href="#audit">Rent audit</a>
+      <a href="#vault">Vault</a>
+      <a href="#packaging">Packaging</a>
+      <a href="#modes">Two modes</a>
+    </nav>
+    <button type="button" class="pill" id="storage-pill" aria-describedby="vault-status">
+      <span class="pill-dot" aria-hidden="true"></span>
+      <span id="storage-label">Storage: this browser</span>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+  <div id="top"></div>
+
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <h1 id="hero-title">Stop renting your reading list.</h1>
+        <p class="lede">SubZero Vault keeps your articles, bookmarks and highlights on a machine you own. It ranks searches the way a search engine does, brings highlights back on a schedule, and shows what your monthly bills add up to.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#vault">Open the vault</a>
+          <a class="btn btn-quiet" href="#packaging">Get the Compose file</a>
+        </div>
+        <p class="fine">Prices on this page are editable examples. Your own bill is the one that counts.</p>
+      </div>
+
+      <figure class="ledger" aria-labelledby="ledger-caption">
+        <div class="ledger-total">
+          <span class="ledger-num" id="ledger-total">$239.76</span>
+          <span class="ledger-unit" id="ledger-caption">a year in rent at the example prices</span>
+        </div>
+        <table class="ledger-table">
+          <caption class="sr-only">The three example subscriptions that make up the total</caption>
+          <thead><tr><th scope="col">Subscription</th><th scope="col" class="num">Per month</th></tr></thead>
+          <tbody id="ledger-rows">
+            <tr><th scope="row">Readwise Reader</th><td class="num">$9.99</td></tr>
+            <tr><th scope="row">Raindrop.io Pro</th><td class="num">$3.99</td></tr>
+            <tr><th scope="row">Rocket Money Premium</th><td class="num">$6.00</td></tr>
+          </tbody>
+        </table>
+        <p class="ledger-foot" id="ledger-foot">A Raspberry Pi 5 kit at 6 W pays for itself by day 190 in this scenario.</p>
+      </figure>
+    </div>
+  </section>
+
+  <noscript>
+    <div class="wrap noscript-note">
+      <p>The interactive parts of this page need JavaScript. The Docker Compose quickstart below works without it, and so does the server.</p>
+    </div>
+  </noscript>
+
+  <section class="band band-quick" id="quickstart" aria-labelledby="quick-title">
+    <div class="wrap split">
+      <div>
+        <h2 id="quick-title">Four commands to your own copy</h2>
+        <p>Clone it, start it, open it. The server needs nothing but Docker. Data lands in a folder next to the Compose file and backups run on a schedule you can change.</p>
+      </div>
+      <pre class="code" aria-label="Quickstart commands"><code>git clone https://github.com/draarivpatel-ui/subzero-vault
+cd subzero-vault
+docker compose up -d
+open http://localhost:8090</code></pre>
+    </div>
+  </section>
+
+  <section class="band" id="audit" aria-labelledby="audit-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="audit-title">Add up the rent, then price the box</h2>
+        <p>Tick what you pay for, type what your bill says, and describe the machine. The chart shows the day owning overtakes renting.</p>
+      </div>
+
+      <div class="audit-grid">
+        <div class="panel" id="audit-inputs">
+          <h3 class="panel-title">What you rent</h3>
+          <div class="table-scroll">
+            <table class="sub-table">
+              <caption class="sr-only">Subscriptions, with a tick to include each one and a monthly price you can edit</caption>
+              <thead><tr><th scope="col">Include</th><th scope="col">Service</th><th scope="col" class="num">Per month</th></tr></thead>
+              <tbody id="audit-subs"></tbody>
+            </table>
+          </div>
+          <p class="note" id="pocket-note">Pocket Premium is not listed. Mozilla shut Pocket down on 8 July 2025.</p>
+
+        </div>
+
+        <div class="audit-out">
+          <div class="tiles" id="audit-results" aria-live="polite"></div>
+
+          <div class="chart-card">
+            <h3 class="panel-title" id="chart-title">Cumulative cost over the next few years</h3>
+            <div class="chart-box" id="audit-chart"></div>
+            <div class="scrub">
+              <label for="chart-month">Look at month</label>
+              <input id="chart-month" type="range" min="0" max="60" step="1" value="12">
+            </div>
+            <p class="readout" id="chart-readout" aria-live="polite"></p>
+            <div class="row-actions">
+              <button type="button" class="btn btn-quiet btn-small" id="copy-scenario">Copy a link to this scenario</button>
+              <span class="status" id="scenario-status" role="status"></span>
+            </div>
+          </div>
+
+          <div class="panel" id="audit-box">
+          <h3 class="panel-title">What you would run instead</h3>
+          <div class="field-grid">
+            <div class="field field-wide">
+              <label for="hw-preset">Starting point</label>
+              <select id="hw-preset"></select>
+            </div>
+            <div class="field">
+              <label for="hw-cost">Box cost, one time ($)</label>
+              <input id="hw-cost" type="number" inputmode="decimal" min="0" step="1" value="120">
+            </div>
+            <div class="field">
+              <label for="hw-watts">Average draw (watts)</label>
+              <input id="hw-watts" type="number" inputmode="decimal" min="0" step="0.5" value="6">
+            </div>
+            <div class="field">
+              <label for="hw-kwh">Electricity ($ per kWh)</label>
+              <input id="hw-kwh" type="number" inputmode="decimal" min="0" step="0.01" value="0.17">
+            </div>
+            <div class="field">
+              <label for="hw-extra">Domain and extras ($ a year)</label>
+              <input id="hw-extra" type="number" inputmode="decimal" min="0" step="1" value="0">
+            </div>
+            <div class="field">
+              <label for="grow-saas">Yearly price rise (%)</label>
+              <input id="grow-saas" type="number" inputmode="decimal" min="0" max="100" step="1" value="0">
+            </div>
+            <div class="field">
+              <label for="grow-invest">Yearly return on savings (%)</label>
+              <input id="grow-invest" type="number" inputmode="decimal" min="0" max="100" step="1" value="0">
+            </div>
+          </div>
+          <p class="note">The box costs and wattages are starting estimates, not quotes. Replace them with what you actually own or pay.</p>
+        </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band band-card" id="vault" aria-labelledby="vault-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="vault-title">Search, highlight, remember</h2>
+        <p>In the browser version eight sample articles are loaded so every feature has something to work on. Nothing leaves this browser unless you connect your own server.</p>
+      </div>
+
+      <div class="vault-bar">
+        <div class="field field-grow">
+          <label for="q">Search the vault</label>
+          <input id="q" type="search" autocomplete="off" placeholder="try: sqlite backup, container, reverse proxy">
+        </div>
+        <div class="vault-actions">
+          <button type="button" class="btn btn-quiet btn-small" id="export-html">Export bookmarks</button>
+          <button type="button" class="btn btn-quiet btn-small" id="export-json">Export JSON</button>
+          <button type="button" class="btn btn-quiet btn-small" id="reset-demo">Reset samples</button>
+        </div>
+      </div>
+      <div class="chips" id="tag-filter" role="group" aria-label="Filter by tag"></div>
+      <p class="status status-line" id="vault-status" role="status"></p>
+
+      <div class="vault-grid">
+        <div class="panel panel-list">
+          <h3 class="panel-title">Results</h3>
+          <ol class="result-list" id="results"></ol>
+        </div>
+
+        <article class="panel panel-reader" aria-label="Reader">
+          <div id="reader"><p class="empty">Pick an article to read it here.</p></div>
+          <div class="hl-tools">
+            <label for="hl-note" class="sr-only">Note for the highlight</label>
+            <input id="hl-note" type="text" maxlength="200" placeholder="Optional note for the highlight">
+            <button type="button" class="btn btn-primary btn-small" id="hl-save">Highlight selected text</button>
+          </div>
+          <h3 class="panel-title">Highlights in this article</h3>
+          <ul class="hl-list" id="highlights"></ul>
+        </article>
+
+        <aside class="panel panel-review" aria-labelledby="review-title">
+          <h3 class="panel-title" id="review-title">Review <span class="count" id="review-count">0 due</span></h3>
+          <div id="review-card"></div>
+        </aside>
+      </div>
+
+      <div class="vault-forms">
+        <details class="drawer">
+          <summary>Add an article</summary>
+          <form id="add-form" class="form-grid" novalidate>
+            <div class="field">
+              <label for="add-title">Title</label>
+              <input id="add-title" type="text" maxlength="200">
+            </div>
+            <div class="field">
+              <label for="add-url">Address (optional)</label>
+              <input id="add-url" type="url" placeholder="https://">
+            </div>
+            <div class="field">
+              <label for="add-tags">Tags, separated by commas</label>
+              <input id="add-tags" type="text" placeholder="docker, homelab">
+            </div>
+            <div class="field field-wide">
+              <label for="add-body">Paste the page HTML, or plain text</label>
+              <textarea id="add-body" rows="6"></textarea>
+            </div>
+            <div class="field field-wide">
+              <button type="submit" class="btn btn-primary btn-small" id="add-submit">Save to the vault</button>
+              <span class="status" id="add-status" role="status"></span>
+            </div>
+          </form>
+        </details>
+
+        <details class="drawer">
+          <summary>Import bookmarks</summary>
+          <div class="form-grid">
+            <div class="field field-wide">
+              <label for="import-file">Bookmarks file exported from a browser (HTML)</label>
+              <input id="import-file" type="file" accept=".html,.htm,text/html">
+            </div>
+            <div class="field field-wide">
+              <button type="button" class="btn btn-primary btn-small" id="import-btn">Import</button>
+              <span class="status" id="import-status" role="status"></span>
+            </div>
+          </div>
+        </details>
+
+        <details class="drawer">
+          <summary>Connect your server</summary>
+          <div class="form-grid">
+            <div class="field">
+              <label for="srv-url">Server address</label>
+              <input id="srv-url" type="url" value="http://localhost:8090">
+            </div>
+            <div class="field">
+              <label for="srv-token">Token, if you set one</label>
+              <input id="srv-token" type="password" autocomplete="off">
+            </div>
+            <div class="field field-wide">
+              <button type="button" class="btn btn-primary btn-small" id="srv-connect">Connect</button>
+              <button type="button" class="btn btn-quiet btn-small" id="srv-disconnect">Use this browser instead</button>
+              <span class="status" id="srv-status" role="status"></span>
+            </div>
+            <div class="field field-wide" id="clip-box" hidden>
+              <p class="note">Drag this to your bookmarks bar to save any page you are reading.</p>
+              <a class="btn btn-quiet btn-small" id="clip-link" href="#vault">Save to my vault</a>
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="packaging" aria-labelledby="pack-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="pack-title">Package it so it runs</h2>
+        <p>Pick the port, the storage and the front door. Copy the files, run one command.</p>
+      </div>
+
+      <div class="studio-grid">
+        <div class="panel">
+          <h3 class="panel-title">Settings</h3>
+          <div class="field-grid">
+            <div class="field">
+              <label for="st-port">Port on your machine</label>
+              <input id="st-port" type="number" min="1" max="65535" value="8090" inputmode="numeric">
+            </div>
+            <div class="field">
+              <label for="st-data">SQLite folder (volume path)</label>
+              <input id="st-data" class="mono" type="text" value="./data" spellcheck="false">
+            </div>
+            <div class="field">
+              <label for="st-cron">Backup schedule (cron)</label>
+              <input id="st-cron" class="mono" type="text" value="0 3 * * *" spellcheck="false" aria-describedby="st-cron-msg">
+              <p class="hint" id="st-cron-msg" role="status">Every day at 03:00. Clear the box to turn backups off.</p>
+            </div>
+            <div class="field">
+              <label for="st-backup-path">Backup folder</label>
+              <input id="st-backup-path" class="mono" type="text" value="./backups" spellcheck="false">
+            </div>
+            <fieldset class="field field-wide choice" id="st-proxy">
+              <legend>Front door</legend>
+              <label class="choice-item"><input type="radio" name="proxy" value="none" checked> <span>None, just a port</span></label>
+              <label class="choice-item"><input type="radio" name="proxy" value="caddy"> <span>Caddy with automatic HTTPS</span></label>
+              <label class="choice-item"><input type="radio" name="proxy" value="tailscale"> <span>Tailscale, no open ports</span></label>
+            </fieldset>
+            <div class="field" id="st-domain-field">
+              <label for="st-domain">Domain for Caddy</label>
+              <input id="st-domain" class="mono" type="text" value="vault.example.com" spellcheck="false">
+            </div>
+            <div class="field">
+              <label for="st-tz">Timezone</label>
+              <input id="st-tz" class="mono" type="text" value="UTC" spellcheck="false">
+            </div>
+            <div class="field field-wide">
+              <label for="st-token">Access token</label>
+              <div class="input-row">
+                <input id="st-token" type="text" spellcheck="false" autocomplete="off" placeholder="leave empty for a private localhost install">
+                <button type="button" class="btn btn-quiet btn-small" id="st-gen-token">Generate</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel panel-files">
+          <div class="tabs" id="st-tabs" role="tablist" aria-label="Generated files"></div>
+          <pre class="code code-file" tabindex="0" aria-label="Generated file contents"><code id="st-out"></code></pre>
+          <div class="row-actions">
+            <button type="button" class="btn btn-primary btn-small" id="st-copy">Copy</button>
+            <button type="button" class="btn btn-quiet btn-small" id="st-download">Download</button>
+            <span class="status" id="st-status" role="status"></span>
+          </div>
+          <pre class="code code-small" id="st-cmds" aria-label="Commands to run"><code>mkdir subzero-vault &amp;&amp; cd subzero-vault
+# save the files above into this folder, then
+docker compose up -d</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band band-card" id="modes" aria-labelledby="modes-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="modes-title">Two ways to run it</h2>
+      </div>
+      <div class="modes-grid">
+        <div class="mode">
+          <h3>In this browser</h3>
+          <p>Everything on this page runs here. Articles, highlights and review dates sit in this browser's local storage, so clearing site data clears the vault. Export your bookmarks or JSON whenever you like.</p>
+          <p>The search, the review scheduler, the importer and the calculator are the same code the server uses.</p>
+        </div>
+        <div class="mode">
+          <h3>On a server you own</h3>
+          <p>A single Python file, standard library only, with SQLite for storage and scheduled backups. Point this page at it from the connect drawer, or open the server's own address, which serves the same app.</p>
+          <p>Browsers on https pages may block calls to a plain http address. Chrome and Firefox allow localhost. Safari does not, so use the server's own address there.</p>
+        </div>
+        <div class="mode">
+          <h3>What it does not replace</h3>
+          <p>Rocket Money's bank sync and bill negotiation need access to your accounts, and this project does not touch that. The audit here is a calculator you fill in by hand.</p>
+          <p>Readwise Reader's feed reader, newsletters and mobile apps are also out of scope. Saved pages, highlights and review are in.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="colophon">
+  <div class="wrap colophon-grid">
+    <p>MIT licensed. Built for Hack Club CloudFALL by Aariv Patel.</p>
+    <p><a href="https://github.com/draarivpatel-ui/subzero-vault">Source on GitHub</a></p>
+    <p class="fine">Starting prices come from the project brief and public pricing guides read on 25 October 2026. They are not quotes. See NOTES.md in the repository for where each one came from.</p>
+  </div>
+</footer>
+
+<script src="engine.js"></script>
+<script src="samples.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
