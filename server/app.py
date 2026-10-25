@@ -982,6 +982,23 @@ class Config(object):
         self.web_dir = os.path.realpath(web_dir or os.path.dirname(HERE))
 
 
+LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
+def host_is_loopback(host):
+    """True when a Host header names this machine (localhost, 127.0.0.1 or ::1, any port)."""
+    host = (host or "").strip().lower()
+    if host.startswith("["):
+        name = host[1:].split("]", 1)[0]
+    else:
+        name = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    return name in LOOPBACK_HOSTS
+
+
+def redact_token(text):
+    return re.sub(r"(token=)[^&\s\"]*", r"\1[redacted]", text)
+
+
 def make_handler(cfg):
     class Handler(BaseHTTPRequestHandler):
         server_version = "SubZeroVault/" + VERSION
@@ -989,7 +1006,8 @@ def make_handler(cfg):
 
         def log_message(self, fmt, *args):
             if os.environ.get("VAULT_QUIET") != "1":
-                sys.stderr.write("%s %s\n" % (self.address_string(), fmt % args))
+                # The bookmarklet sends its token in the query string, so keep it out of the access log.
+                sys.stderr.write("%s %s\n" % (self.address_string(), redact_token(fmt % args)))
 
         # -- helpers --------------------------------------------------------
         def _origin_state(self):
@@ -1044,6 +1062,9 @@ def make_handler(cfg):
             if not isinstance(data, dict):
                 raise ApiError(400, "body must be a JSON object")
             return data
+
+        def _host_is_loopback(self):
+            return host_is_loopback(self.headers.get("Host"))
 
         def _authorized(self, query):
             if not cfg.token:
@@ -1124,6 +1145,10 @@ def make_handler(cfg):
                 return self._clip(method, query)
             if origin and not ok:
                 raise ApiError(403, "origin not allowed; add it to VAULT_ALLOWED_ORIGINS")
+            if not cfg.token and not self._host_is_loopback():
+                # Without a token the API is only for this machine. Checking the Host header also stops
+                # DNS rebinding, where a web page points its own name at 127.0.0.1 and then counts as same origin.
+                raise ApiError(403, "no VAULT_TOKEN is set, so the API only answers at localhost; set a token to reach it any other way")
             if not self._authorized(query):
                 return self._send(401, json.dumps({"error": "missing or wrong token"}), extra={"WWW-Authenticate": "Bearer"})
             store = cfg.store
@@ -1466,6 +1491,14 @@ def selftest():
         httpd.shutdown()
         httpd.server_close()
 
+    # Host and log helpers
+    for h, want in (("localhost", True), ("localhost:8090", True), ("127.0.0.1:9", True), ("[::1]:8090", True), ("::1", True),
+                    ("LOCALHOST:1", True), ("", False), ("evil.test", False), ("127.0.0.1.evil.test:80", False),
+                    ("localhost.evil.test", False), ("192.168.1.2:8090", False)):
+        ck.eq(host_is_loopback(h), want, "host_is_loopback(%r)" % h)
+    ck.eq(redact_token('"POST /api/clip?token=abc123&x=1 HTTP/1.1" 201 -'), '"POST /api/clip?token=[redacted]&x=1 HTTP/1.1" 201 -',
+          "access log hides the clip token")
+
     # A server with no token leaves the bookmarklet off
     cfg2 = Config(Store(os.path.join(tmp, "open.db")), token="")
     httpd2 = serve(cfg2, "127.0.0.1", 0)
@@ -1474,6 +1507,16 @@ def selftest():
     try:
         st, _, _ = _call(base2, "GET", "/api/articles")
         ck.eq(st, 200, "no token means open api on localhost")
+        port2 = httpd2.server_address[1]
+        for host in ("localhost:%d" % port2, "[::1]:%d" % port2):
+            st, _, _ = _call(base2, "GET", "/api/articles", headers={"Host": host})
+            ck.eq(st, 200, "no token, Host %s is local" % host)
+        st, _, _ = _call(base2, "GET", "/api/articles", headers={"Host": "evil.test:%d" % port2, "Origin": "http://evil.test:%d" % port2})
+        ck.eq(st, 403, "no token: a rebound name is refused even when Origin matches Host")
+        st, _, _ = _call(base2, "POST", "/api/articles", {"title": "x", "text": "y"}, headers={"Host": "192.168.1.20:8090"})
+        ck.eq(st, 403, "no token: a LAN address is refused")
+        st, _, _ = _call(base2, "GET", "/health", headers={"Host": "192.168.1.20:8090"})
+        ck.eq(st, 200, "health still answers on any name")
         st, _, _ = _call(base2, "POST", "/api/clip", raw=b"{}", headers={"Content-Type": "text/plain"})
         ck.eq(st, 403, "clip is off without a token")
     finally:

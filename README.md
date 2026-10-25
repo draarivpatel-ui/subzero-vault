@@ -4,6 +4,8 @@ A self-hosted replacement for paid read-it-later, bookmark and highlight apps li
 
 ![SubZero Vault hero showing the yearly rent ledger](img/hero.png)
 
+**How this was made.** The code, tests and copy in this repository were written by an AI assistant (Claude) at the owner's request, and no Hackatime or Lapse hours were tracked for it. CloudFALL asks for tracked hours and allows at most 30 percent AI-assisted work, so as built this is not an eligible CloudFALL submission. See NOTES.md.
+
 ## Quickstart
 
 ```
@@ -94,7 +96,7 @@ All routes are under `/api`. With `VAULT_TOKEN` set, send `Authorization: Bearer
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `VAULT_PORT` | `8090` | host port in Compose, listen port in the server |
-| `VAULT_TOKEN` | empty | bearer token. Empty means open on localhost |
+| `VAULT_TOKEN` | empty | bearer token. Empty means the API only answers requests addressed to `localhost`, `127.0.0.1` or `::1` (other names and LAN addresses get a 403) |
 | `VAULT_ALLOWED_ORIGINS` | `https://aariv.me` | websites allowed to call the API from a browser |
 | `VAULT_DB` | `./data/vault.db` | SQLite file |
 | `VAULT_BACKUP_DIR`, `VAULT_BACKUP_CRON` | `/backups`, `0 3 * * *` in Compose | scheduled backups, 5 field cron, 14 kept |
@@ -107,7 +109,7 @@ If you expose the server beyond your own machine, set a token and put it behind 
 
 ```
 npm test                       # 186 engine and page tests, Node 18 or newer, no dependencies
-python3 server/app.py --selftest   # 212 checks, then a live server is started and every endpoint is called
+python3 server/app.py --selftest   # 229 checks, then a live server is started and every endpoint is called
 ```
 
 The Node suite covers the maths (hand computed BM25 and SM-2 values), readability, bookmarks, the Compose generator, page markup rules (labels, live regions, meta tags, colour tokens) and the page controller against a small fake DOM. The Python self test replays `tests/fixtures/parity.json` so the two implementations stay in step.

@@ -34,7 +34,7 @@ Hardware presets (`$120` and 6 W for a Raspberry Pi 5 kit, `$150` and 10 W for a
 | Check | Result |
 | --- | --- |
 | `node --test tests/` | 186 passing (100 in `engine.test.js`, 86 in `dom-smoke.test.js`) |
-| `python3 server/app.py --selftest` | 212 checks, including a live server run on a random port, token and CORS handling, import and export, backups, path traversal |
+| `python3 server/app.py --selftest` | 229 checks, including a live server run on a random port, token and CORS handling, the localhost-only rule when no token is set, access log token redaction, import and export, backups, path traversal |
 | Python 3.9 syntax | parsed with `ast.parse(feature_version=(3, 9))`, and the self test ran on Python 3.9.6 |
 | Honesty harness `--audit` | 0 violations |
 | Honesty harness `--planted-defects --count 150` | 132 of 150 mutations caught on the last full run (109 before the extra tests were added). The escapes that remain are mostly inside the readability scorer's tag and weight arithmetic and a few UI branch conditions. Not every one was chased down. |
