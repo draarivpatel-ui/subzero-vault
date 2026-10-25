@@ -98,10 +98,16 @@
         <h2 id="quick-title">Four commands to your own copy</h2>
         <p>Clone it, start it, open it. The server needs nothing but Docker. Data lands in a folder next to the Compose file and backups run on a schedule you can change.</p>
       </div>
-      <pre class="code" aria-label="Quickstart commands"><code>git clone https://github.com/draarivpatel-ui/subzero-vault
+      <div class="code-wrap">
+        <pre class="code" id="qs-code" tabindex="0" aria-label="Quickstart commands"><code>git clone https://github.com/draarivpatel-ui/subzero-vault
 cd subzero-vault
 docker compose up -d
 open http://localhost:8090</code></pre>
+        <div class="row-actions">
+          <button type="button" class="btn btn-quiet btn-small" id="qs-copy">Copy the four commands</button>
+          <span class="status" id="qs-status" role="status"></span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -113,6 +119,7 @@ open http://localhost:8090</code></pre>
       </div>
 
       <div class="audit-grid">
+        <div class="audit-col">
         <div class="panel" id="audit-inputs">
           <h3 class="panel-title">What you rent</h3>
           <div class="table-scroll">
@@ -123,27 +130,9 @@ open http://localhost:8090</code></pre>
             </table>
           </div>
           <p class="note" id="pocket-note">Pocket Premium is not listed. Mozilla shut Pocket down on 8 July 2025.</p>
-
         </div>
 
-        <div class="audit-out">
-          <div class="tiles" id="audit-results" aria-live="polite"></div>
-
-          <div class="chart-card">
-            <h3 class="panel-title" id="chart-title">Cumulative cost over the next few years</h3>
-            <div class="chart-box" id="audit-chart"></div>
-            <div class="scrub">
-              <label for="chart-month">Look at month</label>
-              <input id="chart-month" type="range" min="0" max="60" step="1" value="12">
-            </div>
-            <p class="readout" id="chart-readout" aria-live="polite"></p>
-            <div class="row-actions">
-              <button type="button" class="btn btn-quiet btn-small" id="copy-scenario">Copy a link to this scenario</button>
-              <span class="status" id="scenario-status" role="status"></span>
-            </div>
-          </div>
-
-          <div class="panel" id="audit-box">
+        <div class="panel" id="audit-box">
           <h3 class="panel-title">What you would run instead</h3>
           <div class="field-grid">
             <div class="field field-wide">
@@ -177,6 +166,25 @@ open http://localhost:8090</code></pre>
           </div>
           <p class="note">The box costs and wattages are starting estimates, not quotes. Replace them with what you actually own or pay.</p>
         </div>
+        </div>
+
+        <div class="audit-out">
+          <div class="tiles" id="audit-results" aria-live="polite"></div>
+
+          <div class="chart-card">
+            <h3 class="panel-title" id="chart-title">Cumulative cost over the next few years</h3>
+            <div class="chart-box" id="audit-chart"></div>
+            <div class="scrub">
+              <label for="chart-month">Look at month</label>
+              <input id="chart-month" type="range" min="0" max="60" step="1" value="12">
+            </div>
+            <p class="readout" id="chart-readout" aria-live="polite"></p>
+            <div class="row-actions">
+              <button type="button" class="btn btn-quiet btn-small" id="copy-scenario">Copy a link to this scenario</button>
+              <span class="status" id="scenario-status" role="status"></span>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -338,7 +346,7 @@ open http://localhost:8090</code></pre>
             <div class="field field-wide">
               <label for="st-token">Access token</label>
               <div class="input-row">
-                <input id="st-token" type="text" spellcheck="false" autocomplete="off" placeholder="leave empty for a private localhost install">
+                <input id="st-token" type="text" spellcheck="false" autocomplete="off" placeholder="Empty means no token">
                 <button type="button" class="btn btn-quiet btn-small" id="st-gen-token">Generate</button>
               </div>
             </div>

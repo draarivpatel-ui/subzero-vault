@@ -94,11 +94,13 @@
     return nf * exp;
   }
 
+  const CHART_M = { l: 58, r: 14, t: 18, b: 46 };
+
   function renderChart(result, opts) {
     const o = opts || {};
     const W = Math.max(280, Math.round(o.width || 640));
     const H = Math.max(220, Math.round(o.height || W * 0.52));
-    const m = { l: 58, r: 14, t: 18, b: 46 };
+    const m = CHART_M;
     const months = Math.min(o.horizon || 36, result.series.saas.length - 1);
     const maxV = niceMax(Math.max(result.series.saas[months], result.series.own[months], result.hardwareCost, 1));
     const px = function (i) { return m.l + (W - m.l - m.r) * (i / months); };
@@ -166,6 +168,13 @@
       '<path class="line line-saas" pathLength="1" d="' + path(upTo(result.series.saas)) + '"/>' +
       '<path class="line line-own" pathLength="1" d="' + path(upTo(result.series.own)) + '"/>' +
       '<g aria-hidden="true">' + cross + labels + scrub + '</g></svg>';
+  }
+
+  // Which month the pointer is over, from its x position inside the drawn chart.
+  function monthAtX(x, drawnWidth, months) {
+    const span = drawnWidth - CHART_M.l - CHART_M.r;
+    if (!(span > 0) || !(months > 0)) return 0;
+    return Math.max(0, Math.min(months, Math.round(((x - CHART_M.l) / span) * months)));
   }
 
   function chartReadout(result, month) {
@@ -838,6 +847,13 @@
     async function onOpen(id) {
       state.selectedId = id;
       await refreshVault(true);
+      // One column on a narrow screen puts the reader far below the list, so bring it up.
+      const narrow = win && win.matchMedia && win.matchMedia('(max-width: 960px)').matches;
+      const panel = byId('reader').parentNode;
+      if (narrow && panel && panel.scrollIntoView) {
+        const calm = win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        panel.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+      }
     }
 
     const onHighlightSave = guarded(async function () {
@@ -970,6 +986,11 @@
       catch (e) { say('st-status', 'Copy was blocked. Select the text and copy it by hand.', true); }
     });
 
+    const onQuickstartCopy = guarded(async function () {
+      try { await copyText(String(byId('qs-code').textContent).trim()); say('qs-status', 'Copied the four commands.'); }
+      catch (e) { say('qs-status', 'Copy was blocked. Select the text and copy it by hand.', true); }
+    });
+
     function onStudioDownload() {
       const file = state.studioFiles.find(function (f) { return f.name === state.studioTab; });
       download(file.name, file.text, 'text/plain');
@@ -1044,6 +1065,24 @@
         renderAudit();
       });
       byId('copy-scenario').addEventListener('click', onCopyScenario);
+      byId('qs-copy').addEventListener('click', onQuickstartCopy);
+      // Moving a pointer across the chart scrubs the month, the same as the slider.
+      const chartBox = byId('audit-chart');
+      const scrubTo = function (e) {
+        const svg = chartBox.querySelector ? chartBox.querySelector('svg') : null;
+        if (!svg || !svg.getBoundingClientRect) return;
+        const r = svg.getBoundingClientRect();
+        const drawn = Number(svg.getAttribute('width')) || r.width;
+        const months = parseInt(byId('chart-month').getAttribute('max'), 10) || 0;
+        const mi = monthAtX((e.clientX - r.left) * (drawn / (r.width || drawn)), drawn, months);
+        if (mi !== state.month) { state.month = mi; renderAudit(); }
+      };
+      chartBox.addEventListener('pointermove', scrubTo);
+      chartBox.addEventListener('pointerdown', function (e) {
+        // The chart is redrawn on every step, so keep the drag on the box rather than on a replaced picture.
+        if (chartBox.setPointerCapture && e.pointerId !== undefined) { try { chartBox.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ } }
+        scrubTo(e);
+      });
       if (win && win.addEventListener) {
         let rz = null;
         win.addEventListener('resize', function () {
@@ -1146,7 +1185,7 @@
   const api = {
     money: money, money0: money0, niceMax: niceMax,
     renderSubRows: renderSubRows, renderLedgerRows: renderLedgerRows, ledgerFoot: ledgerFoot, renderResults: renderResults,
-    renderChart: renderChart, chartReadout: chartReadout, renderTagChips: renderTagChips, renderResultsList: renderResultsList,
+    renderChart: renderChart, monthAtX: monthAtX, chartReadout: chartReadout, renderTagChips: renderTagChips, renderResultsList: renderResultsList,
     renderBody: renderBody, renderReader: renderReader, renderHighlights: renderHighlights, renderReview: renderReview,
     renderCode: renderCode, studioFiles: studioFiles, renderTabs: renderTabs, describeCron: describeCron, bookmarklet: bookmarklet,
     cueFor: cueFor, LocalStore: LocalStore, ServerStore: ServerStore, createApp: createApp, mount: mount

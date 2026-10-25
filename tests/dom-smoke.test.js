@@ -794,3 +794,39 @@ test('the search box waits for the debounce delay before searching', async () =>
   env.els.q.fire('input');
   assert.ok(timers.includes(120));
 });
+
+test('a pointer over the chart picks the month under it and clamps at both ends', () => {
+  // the drawn chart keeps 58 px on the left and 14 px on the right for labels
+  assert.equal(App.monthAtX(58, 640, 36), 0);
+  assert.equal(App.monthAtX(0, 640, 36), 0);
+  assert.equal(App.monthAtX(640, 640, 36), 36);
+  assert.equal(App.monthAtX(58 + (640 - 58 - 14) / 2, 640, 36), 18);
+  assert.equal(App.monthAtX(100, 50, 36), 0);
+  assert.equal(App.monthAtX(300, 640, 0), 0);
+});
+
+test('dragging across the chart moves the month and the readout', async () => {
+  const { env } = await boot();
+  const box = env.els['audit-chart'];
+  assert.ok(box.listenerCount('pointermove') >= 1 && box.listenerCount('pointerdown') >= 1);
+  box.querySelector = () => ({ getBoundingClientRect: () => ({ left: 0, width: 640 }), getAttribute: () => '640' });
+  box.fire('pointerdown', { clientX: 58 + (640 - 58 - 14) * 0.5 });
+  assert.ok(env.els['chart-readout'].textContent.startsWith('Month 18.'));
+  box.fire('pointermove', { clientX: 640 });
+  assert.ok(env.els['chart-readout'].textContent.startsWith('Month 36.'));
+});
+
+test('the quickstart commands copy in one press', async () => {
+  const { env } = await boot();
+  env.els['qs-code'].textContent = 'git clone x\ncd x\n';
+  env.els['qs-copy'].fire('click');
+  await sleep(10);
+  assert.equal(env.copied[0], 'git clone x\ncd x');
+  assert.equal(env.els['qs-status'].textContent, 'Copied the four commands.');
+});
+
+test('the chart label halo, sticky results and touch sizes are in the stylesheet', () => {
+  assert.ok(/\.chart-label,\s*\.cross-text\s*\{[^}]*paint-order:\s*stroke/.test(CSS));
+  assert.ok(/\.audit-out\s*\{\s*position:\s*sticky/.test(CSS));
+  assert.ok(/@media \(pointer: coarse\)/.test(CSS));
+});

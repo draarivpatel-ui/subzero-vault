@@ -370,6 +370,7 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 
 /* Audit */
 .audit-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-6); align-items: start; }
+.audit-col { display: grid; gap: var(--space-6); min-width: 0; }
 .audit-out { display: grid; gap: var(--space-6); min-width: 0; }
 .audit-out .panel-title:first-child { margin-top: 0; }
 .table-scroll { overflow-x: auto; }
@@ -402,11 +403,12 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .tile.is-bad .tile-value { color: var(--rust-deep); }
 
 .chart-card { background: var(--surface); border: var(--rule); border-radius: var(--radius); padding: var(--space-5); min-width: 0; }
-.chart-box { width: 100%; min-height: 15rem; }
+.chart-box { width: 100%; min-height: 15rem; cursor: crosshair; touch-action: pan-y; }
 .chart-svg { display: block; width: 100%; height: auto; overflow: visible; }
 .chart-grid line { stroke: var(--line); stroke-width: 1; }
-.chart-axis text, .chart-label { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-2); }
+.chart-axis text, .chart-label { font-family: var(--font-mono); font-size: 12px; fill: var(--ink-2); }
 .chart-label { font-weight: 600; }
+.chart-label, .cross-text { paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
 .chart-label-saas { fill: var(--rust-deep); }
 .chart-label-own { fill: var(--green); }
 .line { fill: none; stroke-width: 2.75; stroke-linecap: round; stroke-linejoin: round; }
@@ -415,7 +417,7 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .area-saas { fill: var(--rust-wash); stroke: none; }
 .cross-line { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 4; }
 .cross-dot { fill: var(--paper); stroke: var(--ink); stroke-width: 2.5; }
-.cross-text { font-family: var(--font-mono); font-size: 11px; font-weight: 600; fill: var(--ink); }
+.cross-text { font-family: var(--font-mono); font-size: 12px; font-weight: 600; fill: var(--ink); }
 .scrub-line { stroke: var(--ink-2); stroke-width: 1; opacity: 0.7; }
 .scrub-dot-saas { fill: var(--rust); }
 .scrub-dot-own { fill: var(--green); }
@@ -447,7 +449,17 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
 .vault-grid { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
-.panel-list { max-height: 44rem; overflow: auto; }
+.panel-list {
+  max-height: 44rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background:
+    linear-gradient(var(--surface) 30%, transparent) top / 100% 2rem no-repeat local,
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 2rem no-repeat local,
+    radial-gradient(farthest-side at 50% 0, var(--line-strong), transparent) top / 100% 0.6rem no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, var(--line-strong), transparent) bottom / 100% 0.6rem no-repeat scroll,
+    var(--surface);
+}
 .result-list { list-style: none; padding: 0; display: grid; gap: var(--space-2); }
 .result {
   display: grid;
@@ -492,6 +504,7 @@ mark.saved { background: var(--green-wash); box-shadow: inset 0 -2px 0 var(--gre
 .hl-due { font: 500 0.75rem var(--font-mono); color: var(--ink-2); white-space: nowrap; }
 .icon-btn { min-width: 2rem; min-height: 2rem; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); color: var(--ink); cursor: pointer; font: 700 0.8125rem var(--font-ui); }
 .icon-btn:hover { background: var(--card); }
+.hl-item .icon-btn { align-self: start; width: 2.25rem; height: 2.25rem; padding: 0; font-size: 1.125rem; line-height: 1; }
 
 .review-card { display: grid; gap: var(--space-4); }
 .review-source { font: 500 0.75rem var(--font-mono); color: var(--ink-2); }
@@ -530,6 +543,9 @@ mark.saved { background: var(--green-wash); box-shadow: inset 0 -2px 0 var(--gre
 }
 .code-file { max-height: 30rem; overflow: auto; }
 .code-small { margin-top: var(--space-4); }
+.code-wrap { display: grid; gap: var(--space-3); min-width: 0; }
+.code-wrap .row-actions { margin-top: 0; }
+.code:focus-visible { outline-color: var(--rust); }
 .code code { font: inherit; white-space: pre; }
 .code .dim { color: var(--code-dim); }
 
@@ -546,7 +562,20 @@ mark.saved { background: var(--green-wash); box-shadow: inset 0 -2px 0 var(--gre
 .js .reveal { opacity: 0; transform: translateY(14px); }
 .js .reveal.is-in { opacity: 1; transform: none; transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
 
+@media (min-width: 961px) {
+  .panel-list { position: sticky; top: 5.25rem; max-height: min(44rem, calc(100vh - 6.5rem)); }
+  .panel-review { position: sticky; top: 5.25rem; }
+}
+
+@media (min-width: 961px) and (min-height: 860px) {
+  .audit-out { position: sticky; top: 5rem; }
+}
+
 @media (max-width: 960px) {
+  .audit-col { display: contents; }
+  #audit-inputs { order: 1; }
+  .audit-out { order: 2; }
+  #audit-box { order: 3; }
   .hero-grid, .split, .audit-grid, .studio-grid { grid-template-columns: minmax(0, 1fr); }
   .vault-grid { grid-template-columns: minmax(0, 1fr); }
   .panel-list { max-height: 24rem; }
@@ -554,6 +583,10 @@ mark.saved { background: var(--green-wash); box-shadow: inset 0 -2px 0 var(--gre
 }
 
 @media (max-width: 640px) {
+  html { scroll-padding-top: 1rem; }
+  .masthead { position: static; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tiles > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .field-grid, .form-grid { grid-template-columns: minmax(0, 1fr); }
   .site-nav { margin-inline-start: 0; flex-basis: 100%; order: 3; gap: var(--space-1) var(--space-4); }
   .masthead-row { gap: var(--space-1) var(--space-3); }
@@ -562,6 +595,15 @@ mark.saved { background: var(--green-wash); box-shadow: inset 0 -2px 0 var(--gre
   .cta-row .btn { flex: 1 1 auto; }
   .ledger { padding: var(--space-4); }
   .sub-basis { display: none; }
+}
+
+@media (pointer: coarse) {
+  .btn-small, .pill, .chip, .tab, .rate-btn { min-height: 2.75rem; }
+  .icon-btn, .hl-item .icon-btn { min-width: 2.75rem; min-height: 2.75rem; }
+  .site-nav a { padding-block: var(--space-3); }
+  .choice-item { min-height: 2.75rem; }
+  .sub-table input[type="number"] { min-height: 2.75rem; }
+  .drawer > summary { min-height: 3rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
