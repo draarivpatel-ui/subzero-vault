@@ -1,0 +1,7 @@
+.git
+.env
+data
+backups
+node_modules
+**/__pycache__
+.hallmark

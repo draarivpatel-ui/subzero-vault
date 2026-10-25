@@ -1,0 +1,26 @@
+# Quickstart: docker compose up -d   then open http://localhost:8090
+# Everything has a default, so this works with no .env file at all.
+name: subzero-vault
+services:
+  vault:
+    build: .
+    image: subzero-vault:local
+    restart: unless-stopped
+    ports:
+      - "${VAULT_PORT:-8090}:8090"
+    environment:
+      VAULT_DB: /data/vault.db
+      VAULT_TOKEN: ${VAULT_TOKEN:-}
+      VAULT_ALLOWED_ORIGINS: ${VAULT_ALLOWED_ORIGINS:-https://aariv.me}
+      VAULT_BACKUP_DIR: /backups
+      VAULT_BACKUP_CRON: ${VAULT_BACKUP_CRON:-0 3 * * *}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

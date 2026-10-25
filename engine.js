@@ -434,6 +434,7 @@
 
   const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
   const DROP_TAGS = new Set(['nav', 'aside', 'footer', 'header', 'form', 'dialog', 'menu']);
+  const MAX_DEPTH = 120;
   const BLOCK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre']);
   const NOISE_RE = /(^|[\s_-])(comment|comments|sidebar|share|sharing|social|promo|advert|ad|ads|cookie|menu|related|subscribe|newsletter|breadcrumb|pagination|popup|modal)([\s_-]|$)/i;
   const ATTR_RE = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
@@ -450,7 +451,7 @@
     const src = String(html || '')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/<(script|style|noscript|svg|template|iframe|canvas|object|select|button)\b[\s\S]*?<\/\1\s*>/gi, ' ');
-    const root = { tag: '#root', children: [], parent: null, attrs: {} };
+    const root = { tag: '#root', children: [], parent: null, attrs: {}, depth: 0 };
     let cur = root;
     const re = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+|<)/g;
     let m;
@@ -471,10 +472,10 @@
       if (tag === 'li' && cur.tag === 'li') cur = cur.parent;
       if ((tag === 'div' || tag === 'ul' || tag === 'ol' || /^h[1-6]$/.test(tag) || tag === 'blockquote' || tag === 'pre') && cur.tag === 'p') cur = cur.parent;
       const attrs = parseAttrs(m[3]);
-      const node = { tag: tag, attrs: attrs, children: [], parent: cur, score: 0 };
+      const node = { tag: tag, attrs: attrs, children: [], parent: cur, score: 0, depth: cur.depth + 1 };
       node.drop = DROP_TAGS.has(tag) || NOISE_RE.test((attrs.class || '') + ' ' + (attrs.id || ''));
       cur.children.push(node);
-      if (!VOID_TAGS.has(tag) && !/\/\s*$/.test(m[3])) cur = node;
+      if (!VOID_TAGS.has(tag) && !/\/\s*$/.test(m[3]) && node.depth < MAX_DEPTH) cur = node;
     }
     return root;
   }
@@ -608,6 +609,13 @@
     return isFinite(t) ? Math.floor(t / 1000) : 0;
   }
 
+  function indexOfCi(src, needle, from) {
+    const re = new RegExp(escapeRegExp(needle), 'ig');
+    re.lastIndex = from;
+    const m = re.exec(src);
+    return m ? m.index : -1;
+  }
+
   function stripTags(s) {
     return String(s).replace(/<[^>]*>/g, '');
   }
@@ -626,12 +634,12 @@
       if (tag === 'dl') {
         if (closing) stack.pop(); else { stack.push(pending); pending = null; }
       } else if (tag === 'h3' && !closing) {
-        const end = src.toLowerCase().indexOf('</h3>', re.lastIndex);
+        const end = indexOfCi(src, '</h3>', re.lastIndex);
         const stop = end < 0 ? src.length : end;
         pending = decodeEntities(stripTags(src.slice(re.lastIndex, stop))).trim();
         re.lastIndex = end < 0 ? stop : end + 5;
       } else if (tag === 'a' && !closing) {
-        const end = src.toLowerCase().indexOf('</a>', re.lastIndex);
+        const end = indexOfCi(src, '</a>', re.lastIndex);
         const stop = end < 0 ? src.length : end;
         const attrs = parseAttrs(m[3]);
         const text = decodeEntities(stripTags(src.slice(re.lastIndex, stop))).replace(/\s+/g, ' ').trim();
