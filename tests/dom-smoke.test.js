@@ -190,6 +190,10 @@ test('compose file, env example and gitignore keep secrets out', () => {
   assert.ok(/^MIT License/.test(read('LICENSE')));
 });
 
+test('the backups sample keeps its 3-2-1 rule heading', () => {
+  assert.ok(S.articles.find((a) => a.id === 's7').body.includes('## The 3-2-1 rule'));
+});
+
 test('sample highlights are quoted from the sample articles', () => {
   assert.equal(S.articles.length, 8);
   S.highlights.forEach((h) => {

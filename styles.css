@@ -327,7 +327,7 @@ input:hover, select:hover, textarea:hover { border-color: var(--ink); }
 input:disabled, select:disabled, textarea:disabled { opacity: 0.5; cursor: not-allowed; }
 input[aria-invalid="true"] { border-color: var(--rust-deep); box-shadow: inset 0 0 0 1px var(--rust-deep); }
 input[type="range"] { width: 100%; accent-color: var(--rust-deep); min-height: 2rem; }
-input[type="checkbox"], input[type="radio"] { width: 1.15rem; height: 1.15rem; accent-color: var(--ink); }
+input[type="checkbox"], input[type="radio"] { width: 1.5rem; height: 1.5rem; accent-color: var(--ink); cursor: pointer; }
 .hint { font-size: 0.8125rem; color: var(--ink-2); margin-top: var(--space-1); }
 .hint.is-error { color: var(--rust-deep); font-weight: 600; }
 .status { font-size: var(--text-sm); color: var(--green); font-weight: 600; margin-inline-start: var(--space-2); }

@@ -405,6 +405,25 @@ test('calculator URL state round trips and defaults encode to nothing', () => {
   assert.equal(back.prices.googleone, 2.99);
 });
 
+test('calculator URL state round trips at every base64 padding length', () => {
+  for (let w = 1; w <= 24; w++) {
+    const s = E.defaultCalcState();
+    s.watts = 10 + w * 1.5;
+    s.hardwareCost = 100 + w;
+    const back = E.decodeCalcState(E.encodeCalcState(s));
+    assert.equal(back.watts, s.watts, 'watts at ' + w);
+    assert.equal(back.hardwareCost, s.hardwareCost, 'cost at ' + w);
+  }
+});
+
+test('numeric strings from form boxes are read as numbers', () => {
+  const c = E.normalizeCalc({ watts: '12.5', hardwareCost: '80', kwhPrice: '0.2', prices: { notion: '11.5' } });
+  assert.strictEqual(c.watts, 12.5);
+  assert.strictEqual(c.hardwareCost, 80);
+  assert.strictEqual(c.kwhPrice, 0.2);
+  assert.strictEqual(c.prices.notion, 11.5);
+});
+
 test('decodeCalcState falls back to defaults on garbage', () => {
   assert.deepEqual(E.decodeCalcState('%%%not-base64%%%'), E.defaultCalcState());
   assert.deepEqual(E.decodeCalcState(''), E.defaultCalcState());
@@ -481,10 +500,104 @@ test('extractReadable falls back to body text when no paragraphs score', () => {
   assert.ok(r.text.includes('Heading'));
 });
 
+test('unclosed paragraphs and list items become siblings, not nested', () => {
+  const r = E.extractReadable('<body><article><p>First paragraph left open, with commas, and enough length to count.<p>Second paragraph also left open, with commas, and enough length to count.' +
+    '<ul><li>first open item<li>second open item</ul></article></body>');
+  assert.deepEqual(r.blocks.map((b) => b.type), ['p', 'p', 'li', 'li']);
+  assert.ok(r.text.includes('First paragraph left open') && r.text.includes('Second paragraph also left'));
+});
+
+test('a div, list or heading after an open paragraph closes it', () => {
+  const r = E.extractReadable('<body><div><p>Intro paragraph left open, with commas, and enough length to count.<div><p>Inner paragraph inside a div, with commas, and enough length too.</p></div>' +
+    '<p>Another open paragraph, with commas, and enough length to count here<h2>Heading after open paragraph</h2></div></body>');
+  assert.deepEqual(r.blocks.map((b) => b.type), ['p', 'p', 'p', 'h']);
+});
+
 test('extractReadable survives empty and broken input', () => {
   assert.equal(E.extractReadable('').text, '');
   assert.doesNotThrow(() => E.extractReadable('<p>unclosed <b>tags <div>everywhere'));
   assert.doesNotThrow(() => E.extractReadable(null));
+});
+
+
+test('block elements after an open paragraph close it', () => {
+  ['<ol><li>item</li></ol>', '<blockquote>A quote that follows an open paragraph, with commas, and length enough.</blockquote>', '<pre>code after open paragraph with enough characters here</pre>'].forEach((tail) => {
+    const r = E.extractReadable('<body><div><p>Opening paragraph left unclosed, with commas, and enough length to count.' + tail + '</div></body>');
+    assert.ok(r.text.includes('Opening paragraph left unclosed'), tail);
+  });
+});
+
+test('preformatted text keeps its line breaks and indentation, paragraphs do not', () => {
+  const r = E.extractReadable('<body><article><p>Spaced   out\n paragraph text, with commas, that is long enough to be counted here.</p><pre>line one\n  line two</pre></article></body>');
+  assert.ok(r.text.includes('Spaced out paragraph text'));
+  assert.ok(r.text.includes('line one\n  line two'));
+});
+
+test('long quotes and code blocks count toward choosing the main container', () => {
+  const quote = 'x'.repeat(10) + ', ' + 'quoted words go here, and here, and here, and here, and here, and here, and here, and here, and here. '.repeat(3);
+  const a = E.extractReadable('<body><div><p>A single medium paragraph, with a comma, that is long enough to be scored.</p></div><div><blockquote>' + quote + '</blockquote></div></body>');
+  assert.ok(a.text.includes('quoted words'));
+  const b = E.extractReadable('<body><div><p>A single medium paragraph, with a comma, that is long enough to be scored.</p></div><div><pre>' + quote + '</pre></div></body>');
+  assert.ok(b.text.includes('quoted words'));
+});
+
+test('main and article beat a plain div, and a div beats a table cell, when scores tie', () => {
+  const para = '<p>Identical paragraph text, with one comma, repeated so the scores are equal.</p>';
+  assert.ok(E.extractReadable('<body><div>' + para.replace('Identical', 'DIVTEXT') + '</div><main>' + para.replace('Identical', 'MAINTEXT') + '</main></body>').text.includes('MAINTEXT'));
+  assert.ok(E.extractReadable('<body><div>' + para.replace('Identical', 'DIVTEXT') + '</div><article>' + para.replace('Identical', 'ARTTEXT') + '</article></body>').text.includes('ARTTEXT'));
+  assert.ok(E.extractReadable('<body><table><tr><td>' + para.replace('Identical', 'CELLTEXT') + '</td></tr></table><div>' + para.replace('Identical', 'DIVTEXT') + '</div></body>').text.includes('DIVTEXT'));
+});
+
+test('a list item that wraps a paragraph is emitted once', () => {
+  const r = E.extractReadable('<body><article><p>Lead paragraph, with commas, and enough length to count as content here.</p><ul><li><p>nested item text</p></li></ul></article></body>');
+  assert.equal(r.blocks.filter((b) => b.text === 'nested item text').length, 1);
+});
+
+test('single quoted and unquoted attributes are read', () => {
+  const r = E.extractReadable("<head><meta property='og:title' content='Single &amp; quoted'></head><body><div class=sidebar><p>Sidebar text, with commas, long enough to otherwise win the scoring contest here.</p></div><article><p>Main story text, with commas, long enough to count as the story of the page.</p></article></body>");
+  assert.equal(r.title, 'Single & quoted');
+  assert.ok(!r.text.includes('Sidebar text'));
+});
+
+test('thousands of nested elements do not blow the stack', () => {
+  const html = '<body>' + '<div>'.repeat(3000) + '<p>Deep paragraph text, with commas, long enough to be counted at all here.</p>' + '</div>'.repeat(3000) + '</body>';
+  assert.doesNotThrow(() => E.extractReadable(html));
+});
+
+test('an unclosed bookmark anchor still parses', () => {
+  const items = E.parseNetscapeBookmarks('<DL><DT><A HREF="https://x.test/">No closing tag');
+  assert.equal(items.length, 1);
+  assert.equal(items[0].url, 'https://x.test/');
+});
+
+test('makeSnippet starts on a whole word', () => {
+  const words = Array.from({ length: 200 }, (_, i) => 'w' + String(i).padStart(3, '0'));
+  const html = E.makeSnippet(words.join(' '), ['w100'], 80);
+  assert.ok(/^\.\.\.w\d{3} /.test(html), html);
+  assert.ok(html.includes('<mark>w100</mark>'));
+});
+
+test('compose adds top level volumes only for the proxies that need them', () => {
+  assert.ok(!/^volumes:/m.test(E.generateDockerCompose({}).compose));
+  const caddy = E.generateDockerCompose({ proxy: 'caddy' }).compose;
+  assert.ok(/^volumes:\n  caddy-data:\n  caddy-config:\n$/m.test(caddy) && !caddy.includes('tailscale-state'));
+  const ts = E.generateDockerCompose({ proxy: 'tailscale' }).compose;
+  assert.ok(ts.includes('tailscale-state:') && !ts.includes('caddy-data') && ts.includes('TS_USERSPACE: "false"'));
+});
+
+test('a domain longer than 120 characters falls back to the example', () => {
+  const g = E.generateDockerCompose({ proxy: 'caddy', domain: 'a'.repeat(130) + '.com' });
+  assert.ok(g.caddyfile.startsWith('vault.example.com {'));
+  assert.ok(E.generateDockerCompose({ proxy: 'caddy', domain: 'my.box.net' }).caddyfile.startsWith('my.box.net {'));
+});
+
+test('yearly breakdown is numbered from year one and price growth lands at month 13', () => {
+  const s = E.defaultCalcState();
+  s.saasGrowth = 0.1;
+  const r = E.computeSubscriptionSavings(s);
+  assert.deepEqual(r.yearly.map((y) => y.year), [1, 2, 3, 4, 5]);
+  close(r.series.saas[12] - r.series.saas[11], 19.98, 1e-9);
+  close(r.series.saas[13] - r.series.saas[12], 19.98 * 1.1, 1e-9);
 });
 
 // ---------------------------------------------------------------------------

@@ -224,29 +224,29 @@
   // price is dollars per month on the annual plan where one exists; null means "enter your own".
   // basis records where each number came from. None of these were read from a vendor page by this code.
   const SUBSCRIPTION_CATALOG = [
-    { id: 'readwise', name: 'Readwise Reader', price: 9.99, replaced: true,
+    { id: 'readwise', name: 'Readwise Reader', price: 9.99,
       basis: 'Readwise Full bundle, annual billing, per 2026 pricing guides. Reader is not sold alone.' },
-    { id: 'raindrop', name: 'Raindrop.io Pro', price: 3.99, replaced: true,
+    { id: 'raindrop', name: 'Raindrop.io Pro', price: 3.99,
       basis: 'Project brief figure. Third-party listings disagree (about 3.00 to 3.54).' },
-    { id: 'rocketmoney', name: 'Rocket Money Premium', price: 6.00, replaced: true,
+    { id: 'rocketmoney', name: 'Rocket Money Premium', price: 6.00,
       basis: 'Project brief figure. Rocket Money lets you choose a price, reported as 7 to 14 in early 2026.' },
-    { id: 'notion', name: 'Notion Plus', price: 10.00, replaced: false,
+    { id: 'notion', name: 'Notion Plus', price: 10.00,
       basis: 'Notion release notes of 2024-06-26, annual billing, per member.' },
-    { id: 'linktree', name: 'Linktree Pro', price: 12.00, replaced: false,
+    { id: 'linktree', name: 'Linktree Pro', price: 12.00,
       basis: 'Annual billing per 2026 pricing guides. Monthly billing is higher.' },
-    { id: 'instapaper', name: 'Instapaper Premium', price: null, replaced: true,
+    { id: 'instapaper', name: 'Instapaper Premium', price: null,
       basis: 'No price recorded. Enter yours.' },
-    { id: 'googleone', name: 'Google One', price: null, replaced: false,
+    { id: 'googleone', name: 'Google One', price: null,
       basis: 'No price recorded. Depends on the storage tier. Enter yours.' },
-    { id: 'icloud', name: 'iCloud+', price: null, replaced: false,
+    { id: 'icloud', name: 'iCloud+', price: null,
       basis: 'No price recorded. Depends on the storage tier. Enter yours.' },
-    { id: 'onepassword', name: '1Password', price: null, replaced: false,
+    { id: 'onepassword', name: '1Password', price: null,
       basis: 'No price recorded. Enter yours.' },
-    { id: 'dropbox', name: 'Dropbox Plus', price: null, replaced: false,
+    { id: 'dropbox', name: 'Dropbox Plus', price: null,
       basis: 'No price recorded. Enter yours.' },
-    { id: 'evernote', name: 'Evernote Personal', price: null, replaced: false,
+    { id: 'evernote', name: 'Evernote Personal', price: null,
       basis: 'No price recorded. Enter yours.' },
-    { id: 'todoist', name: 'Todoist Pro', price: null, replaced: false,
+    { id: 'todoist', name: 'Todoist Pro', price: null,
       basis: 'No price recorded. Enter yours.' }
   ];
 
@@ -281,7 +281,7 @@
   }
 
   function num(v, fallback) {
-    const n = typeof v === 'number' ? v : parseFloat(v);
+    const n = parseFloat(v);
     return isFinite(n) ? n : fallback;
   }
 
@@ -387,14 +387,12 @@
   }
 
   function b64urlEncode(str) {
-    const b = typeof btoa === 'function' ? btoa(str) : Buffer.from(str, 'binary').toString('base64');
-    return b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
   function b64urlDecode(s) {
     const pad = s.replace(/-/g, '+').replace(/_/g, '/');
-    const full = pad + '==='.slice((pad.length + 3) % 4);
-    return typeof atob === 'function' ? atob(full) : Buffer.from(full, 'base64').toString('binary');
+    return atob(pad + '='.repeat((4 - pad.length % 4) % 4));
   }
 
   // URL state for the calculator. Only values that differ from the defaults are written.

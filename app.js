@@ -251,7 +251,7 @@
     if (!list.length) return '<li class="empty">No highlights yet. Select text in the article and press the button.</li>';
     return list.map(function (h) {
       return '<li class="hl-item"><div><q>' + esc(h.text) + '</q>' + (h.note ? '<span class="hl-note">' + esc(h.note) + '</span>' : '') +
-        '<span class="hl-due">next review ' + esc(h.due) + ', every ' + h.interval + ' day' + (h.interval === 1 ? '' : 's') + '</span></div>' +
+        '<span class="hl-due">' + (h.interval ? 'next review ' + esc(h.due) + ', every ' + h.interval + ' day' + (h.interval === 1 ? '' : 's') : 'new, due ' + esc(h.due)) + '</span></div>' +
         '<button type="button" class="icon-btn" data-action="hl-delete" data-id="' + esc(h.id) + '" aria-label="Delete this highlight">x</button></li>';
     }).join('');
   }
@@ -330,6 +330,10 @@
   function summary(a) {
     return { id: a.id, title: a.title, url: a.url, tags: a.tags, savedAt: a.savedAt, folder: a.folder || '', wordCount: E.wordCount(a.body),
       excerpt: String(a.body || '').replace(/^#+ |^- |^> /gm, '').replace(/\s+/g, ' ').slice(0, 150) };
+  }
+
+  function plain(text) {
+    return String(text || '').replace(/^(## |- |> )/gm, '');
   }
 
   function cleanTags(tags) {
@@ -423,7 +427,7 @@
       } else {
         rows = E.bm25Search(index(), q).map(function (h) {
           const a = byId(h.id);
-          return Object.assign(summary(a), { score: h.score, terms: h.terms, snippet: E.makeSnippet(a.body || a.url, h.terms) });
+          return Object.assign(summary(a), { score: h.score, terms: h.terms, snippet: E.makeSnippet(plain(a.body || a.url), h.terms) });
         });
       }
       return tag ? rows.filter(function (r) { return r.tags.indexOf(tag) >= 0; }) : rows;
@@ -715,7 +719,7 @@
         const counts = {};
         all.forEach(function (a) { (a.tags || []).forEach(function (t) { counts[t] = (counts[t] || 0) + 1; }); });
         const names = Object.keys(counts).sort(function (x, y) { return counts[y] - counts[x] || (x < y ? -1 : 1); });
-        const keep = names.slice(0, 24);
+        const keep = names.slice(0, 12);
         if (state.tag && keep.indexOf(state.tag) < 0 && counts[state.tag]) keep.push(state.tag);
         const tags = keep.map(function (t) { return { tag: t, count: counts[t] }; });
         const results = await store.search(state.query, state.tag);
@@ -1092,7 +1096,8 @@
           }
         }
         const proto = win && win.location ? win.location.protocol : '';
-        if (proto === 'http:' || proto === 'https:') {
+        const served = doc.querySelector ? doc.querySelector('meta[name="subzero-server"]') : null;
+        if (served && (proto === 'http:' || proto === 'https:')) {
           const res = await fetchFn('health', { method: 'GET' });
           const ct = res.headers && res.headers.get ? res.headers.get('content-type') || '' : '';
           if (res.ok && ct.indexOf('json') >= 0) {

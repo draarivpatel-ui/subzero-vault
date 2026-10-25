@@ -907,7 +907,7 @@ class Store(object):
                 continue
             out.append({
                 "id": h["id"], "score": h["score"], "terms": h["terms"], "title": r["title"], "url": r["url"], "tags": tags,
-                "snippet": make_snippet(r["body"] or r["url"], h["terms"]),
+                "snippet": make_snippet(re.sub(r"(?m)^(## |- |> )", "", r["body"] or r["url"]), h["terms"]),
             })
             if len(out) >= limit:
                 break
@@ -1112,6 +1112,9 @@ def make_handler(cfg):
             with open(full, "rb") as fh:
                 data = fh.read()
             ext = os.path.splitext(full)[1]
+            if path == "/index.html":
+                # Tells the page it is being served by a vault, so it can skip probing on static hosts.
+                data = data.replace(b'<meta charset="utf-8">', b'<meta charset="utf-8">\n<meta name="subzero-server" content="same-origin">', 1)
             cache = "public, max-age=86400" if ext in (".woff2", ".png") else "no-cache"
             self._send(200, data, MIME.get(ext, "application/octet-stream"), {"Cache-Control": cache})
 
@@ -1445,6 +1448,9 @@ def selftest():
             st, hdr, body = _call(base, "GET", static)
             if os.path.exists(os.path.join(cfg.web_dir, "index.html")):
                 ck.eq(st, 200, "static %s" % static)
+        st, _, body = _call(base, "GET", "/")
+        if os.path.exists(os.path.join(cfg.web_dir, "index.html")):
+            ck.ok(b'name="subzero-server"' in body, "served index tells the page a vault is behind it")
         st, _, _ = _call(base, "GET", "/server/app.py")
         ck.eq(st, 404, "server source is not served")
         st, _, _ = _call(base, "GET", "/..%2fetc%2fpasswd")
