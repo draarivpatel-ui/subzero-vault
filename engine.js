@@ -836,7 +836,7 @@
     e.push('VAULT_TOKEN=' + token);
     e.push('VAULT_ALLOWED_ORIGINS=https://aariv.me');
     e.push('TZ=' + tz);
-    if (proxy === 'tailscale') e.push('TS_AUTHKEY=tskey-auth-replace-me');
+    if (proxy === 'tailscale') e.push('TS_AUTHKEY=paste-your-tailscale-auth-key');
 
     const caddyfile = proxy === 'caddy'
       ? domain + ' {\n    encode gzip\n    reverse_proxy vault:8090\n}\n'
