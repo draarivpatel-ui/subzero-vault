@@ -688,7 +688,7 @@ test('validateCron rejects malformed schedules', () => {
 
 test('generateDockerCompose default publishes the port and mounts data', () => {
   const g = E.generateDockerCompose({});
-  assert.ok(g.compose.includes('"${VAULT_PORT:-8090}:8090"'));
+  assert.ok(g.compose.includes('"127.0.0.1:${VAULT_PORT:-8090}:8090"'));
   assert.ok(g.compose.includes('./data:/data'));
   assert.ok(g.compose.includes('healthcheck:'));
   assert.ok(g.compose.includes('restart: unless-stopped'));

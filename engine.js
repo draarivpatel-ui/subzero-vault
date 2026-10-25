@@ -769,11 +769,11 @@
       y.push('      - "8090"');
     } else {
       y.push('    ports:');
-      y.push('      - "${VAULT_PORT:-' + port + '}:8090"');
+      y.push('      - "127.0.0.1:${VAULT_PORT:-' + port + '}:8090"');
     }
     y.push('    environment:');
     y.push('      VAULT_DB: /data/vault.db');
-    y.push('      VAULT_TOKEN: ${VAULT_TOKEN:-}');
+    y.push('      VAULT_TOKEN: ' + (proxy === 'none' ? '${VAULT_TOKEN:-}' : '${VAULT_TOKEN:?set VAULT_TOKEN in .env}'));
     y.push('      VAULT_ALLOWED_ORIGINS: ${VAULT_ALLOWED_ORIGINS:-https://aariv.me}');
     y.push('      TZ: ${TZ:-UTC}');
     if (cronOk) {
@@ -833,7 +833,7 @@
     const e = [];
     e.push('# Copy to .env next to docker-compose.yml. Never commit the real file.');
     if (proxy === 'none') e.push('VAULT_PORT=' + port);
-    e.push('VAULT_TOKEN=' + token);
+    e.push('VAULT_TOKEN=' + (token || (proxy === 'none' ? '' : 'paste-a-random-secret-token')));
     e.push('VAULT_ALLOWED_ORIGINS=https://aariv.me');
     e.push('TZ=' + tz);
     if (proxy === 'tailscale') e.push('TS_AUTHKEY=paste-your-tailscale-auth-key');
