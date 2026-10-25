@@ -1,0 +1,13 @@
+{
+  "name": "subzero-vault",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted read-it-later, bookmarks, highlight review and subscription audit. Docker Compose server plus a browser-only app.",
+  "scripts": {
+    "test": "node --test tests/",
+    "selftest": "python3 server/app.py --selftest",
+    "parity": "node scripts/make-parity.js"
+  },
+  "author": "Aariv Patel",
+  "license": "MIT"
+}
