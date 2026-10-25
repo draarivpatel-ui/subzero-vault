@@ -714,8 +714,10 @@
         const all = await store.list();
         const counts = {};
         all.forEach(function (a) { (a.tags || []).forEach(function (t) { counts[t] = (counts[t] || 0) + 1; }); });
-        const tags = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] || (a < b ? -1 : 1); }).slice(0, 14)
-          .map(function (t) { return { tag: t, count: counts[t] }; });
+        const names = Object.keys(counts).sort(function (x, y) { return counts[y] - counts[x] || (x < y ? -1 : 1); });
+        const keep = names.slice(0, 24);
+        if (state.tag && keep.indexOf(state.tag) < 0 && counts[state.tag]) keep.push(state.tag);
+        const tags = keep.map(function (t) { return { tag: t, count: counts[t] }; });
         const results = await store.search(state.query, state.tag);
         if (seq !== state.seq) return;
         byId('tag-filter').innerHTML = renderTagChips(tags, state.tag);

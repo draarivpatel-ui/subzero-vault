@@ -16,7 +16,7 @@ test('tokenizeDocument lowercases and drops stopwords', () => {
 });
 
 test('tokenizeDocument removes apostrophes instead of splitting words', () => {
-  assert.deepEqual(E.tokenizeDocument("don't stop, it's Aariv’s"), ['dont', 'stop', 'aarivs']);
+  assert.deepEqual(E.tokenizeDocument("don't stop, it's Aariv\u2019s"), ['dont', 'stop', 'aarivs']);
 });
 
 test('tokenizeDocument keeps digits and splits on punctuation', () => {
@@ -24,7 +24,7 @@ test('tokenizeDocument keeps digits and splits on punctuation', () => {
 });
 
 test('tokenizeDocument handles non ASCII letters', () => {
-  assert.deepEqual(E.tokenizeDocument('café naïve'), ['café', 'naïve']);
+  assert.deepEqual(E.tokenizeDocument('caf\u00e9 na\u00efve'), ['caf\u00e9', 'na\u00efve']);
 });
 
 test('tokenizeDocument can keep stopwords on request', () => {

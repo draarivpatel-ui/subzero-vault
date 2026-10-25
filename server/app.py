@@ -49,7 +49,7 @@ _TOKEN_RE = re.compile(r"[^\W_]+")
 
 
 def tokenize(text, keep_stopwords=False):
-    norm = ("" if text is None else str(text)).lower().replace("'", "").replace("’", "")
+    norm = ("" if text is None else str(text)).lower().replace("'", "").replace("\u2019", "")
     raw = _TOKEN_RE.findall(norm)
     return raw if keep_stopwords else [t for t in raw if t not in STOPWORDS]
 
@@ -302,10 +302,10 @@ def compute_savings(inp):
 # ---------------------------------------------------------------------------
 
 NAMED_ENTITIES = {
-    "amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'", "nbsp": " ", "hellip": "...", "rsquo": "’",
-    "lsquo": "‘", "ldquo": "“", "rdquo": "”", "copy": "©", "reg": "®", "trade": "™",
-    "middot": "·", "bull": "•", "laquo": "«", "raquo": "»", "times": "×",
-    "mdash": "—", "ndash": "–",
+    "amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'", "nbsp": " ", "hellip": "...", "rsquo": "\u2019",
+    "lsquo": "\u2018", "ldquo": "\u201c", "rdquo": "\u201d", "copy": "\u00a9", "reg": "\u00ae", "trade": "\u2122",
+    "middot": "\u00b7", "bull": "\u2022", "laquo": "\u00ab", "raquo": "\u00bb", "times": "\u00d7",
+    "mdash": "\u2014", "ndash": "\u2013",
 }
 _ENTITY_RE = re.compile(r"&(#x[0-9a-f]+|#[0-9]+|[a-z]+);", re.I)
 

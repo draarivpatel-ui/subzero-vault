@@ -33,10 +33,10 @@
   }
 
   const NAMED_ENTITIES = {
-    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', hellip: '...', rsquo: '’',
-    lsquo: '‘', ldquo: '“', rdquo: '”', copy: '©', reg: '®', trade: '™',
-    middot: '·', bull: '•', laquo: '«', raquo: '»', times: '×',
-    mdash: '—', ndash: '–'
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', hellip: '...', rsquo: '\u2019',
+    lsquo: '\u2018', ldquo: '\u201c', rdquo: '\u201d', copy: '\u00a9', reg: '\u00ae', trade: '\u2122',
+    middot: '\u00b7', bull: '\u2022', laquo: '\u00ab', raquo: '\u00bb', times: '\u00d7',
+    mdash: '\u2014', ndash: '\u2013'
   };
 
   function decodeEntities(s) {
@@ -59,7 +59,7 @@
   // Lowercase, drop apostrophes, split on anything that is not a letter or digit, drop stopwords.
   function tokenizeDocument(text, opts) {
     const keepStop = !!(opts && opts.keepStopwords);
-    const norm = String(text == null ? '' : text).toLowerCase().replace(/['’]/g, '');
+    const norm = String(text == null ? '' : text).toLowerCase().replace(/['\u2019]/g, '');
     const raw = norm.match(/[\p{L}\p{N}]+/gu) || [];
     return keepStop ? raw : raw.filter(function (t) { return !STOPWORDS.has(t); });
   }
