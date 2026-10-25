@@ -42,6 +42,7 @@ python3 server/app.py --port 8090
 | ![Rent audit](img/audit.png) | Ticking subscriptions, the break-even chart and the box inputs |
 | ![Vault](img/vault.png) | A BM25 search, the reader, a saved highlight and a review card |
 | ![Packaging studio](img/studio.png) | Compose output for Caddy with a 30 minute backup schedule |
+| ![Phone layout](img/mobile.png) | The same page on a 390 pixel wide phone |
 
 ## The numbers on the page
 
