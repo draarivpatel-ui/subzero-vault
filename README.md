@@ -105,7 +105,7 @@ If you expose the server beyond your own machine, set a token and put it behind 
 ## Tests
 
 ```
-npm test                       # 168 engine and page tests, Node 18 or newer, no dependencies
+npm test                       # 186 engine and page tests, Node 18 or newer, no dependencies
 python3 server/app.py --selftest   # 212 checks, then a live server is started and every endpoint is called
 ```
 

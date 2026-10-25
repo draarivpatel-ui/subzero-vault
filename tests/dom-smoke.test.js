@@ -733,3 +733,64 @@ test('LocalStore ignores a corrupted saved vault and reseeds', async () => {
   const st = App.LocalStore(bad, () => '2026-10-25');
   assert.equal((await st.list()).length, 8);
 });
+
+// ---------------------------------------------------------------------------
+// Store details
+// ---------------------------------------------------------------------------
+
+test('only the active studio tab is selected and focusable', () => {
+  const html = App.renderTabs([{ name: 'docker-compose.yml' }, { name: '.env' }], '.env');
+  assert.equal((html.match(/aria-selected="true"/g) || []).length, 1);
+  assert.ok(/data-id="\.env" aria-selected="true" tabindex="0"/.test(html));
+  assert.ok(/data-id="docker-compose\.yml" aria-selected="false" tabindex="-1"/.test(html));
+});
+
+test('saving the same address again updates the article instead of duplicating it', async () => {
+  const st = App.LocalStore(createEnvironment().storage, () => '2026-10-25');
+  const a = await st.add({ title: 'First', url: 'https://x.test/p', body: 'one', tags: ['keep'] });
+  const b = await st.add({ title: 'Second', url: 'https://x.test/p', body: 'two' });
+  assert.equal(a.id, b.id);
+  assert.equal((await st.list()).filter((x) => x.url === 'https://x.test/p').length, 1);
+  const got = await st.get(a.id);
+  assert.equal(got.title, 'Second');
+  assert.equal(got.body, 'two');
+  assert.deepEqual(got.tags, ['keep'], 'tags are kept when the update carries none');
+});
+
+test('highlights are listed per article and reviews touch only the chosen one', async () => {
+  const st = App.LocalStore(createEnvironment().storage, () => '2026-10-25');
+  assert.deepEqual((await st.highlights('s1')).map((h) => h.id), ['h1']);
+  assert.equal((await st.highlights()).length, 3);
+  await st.review('h2', 5, '2026-10-25');
+  const all = await st.highlights();
+  assert.equal(all.find((h) => h.id === 'h2').interval, 1);
+  assert.equal(all.find((h) => h.id === 'h1').interval, 0);
+  assert.equal((await st.due('2026-10-25')).length, 2);
+});
+
+test('a new highlight reads as new and a reviewed one shows its interval', () => {
+  const html = App.renderHighlights([{ id: 'a', text: 'x', note: '', due: '2026-10-25', interval: 0 }, { id: 'b', text: 'y', note: '', due: '2026-11-01', interval: 6 }]);
+  assert.ok(html.includes('new, due 2026-10-25'));
+  assert.ok(html.includes('next review 2026-11-01, every 6 days'));
+});
+
+test('ServerStore sends no body on reads and no query when listing every highlight', async () => {
+  const f = fakeServer({});
+  const st = App.ServerStore('http://h:1', '', f);
+  await st.highlights();
+  await st.highlights(7);
+  assert.ok(f.calls[0].url.endsWith('/api/highlights') && f.calls[0].init.body === undefined);
+  assert.ok(f.calls[1].url.endsWith('/api/highlights?article=7'));
+  assert.ok(!('Content-Type' in f.calls[0].init.headers));
+});
+
+test('the search box waits for the debounce delay before searching', async () => {
+  const env = createEnvironment();
+  const timers = [];
+  env.win.setTimeout = (fn, ms) => { timers.push(ms); fn(); return 1; };
+  const app = App.createApp(env.doc, env.win, { storage: env.storage, today: () => '2026-10-25' });
+  await app.init();
+  env.els.q.value = 'dns';
+  env.els.q.fire('input');
+  assert.ok(timers.includes(120));
+});
