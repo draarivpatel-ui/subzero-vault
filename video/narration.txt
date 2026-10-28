@@ -1,0 +1,4 @@
+SubZero Vault is a self-hosted read-it-later, bookmark, and spaced-repetition vault designed to run on a home NAS or mini server with Docker Compose.
+First, the rent audit compares recurring subscriptions like Readwise Reader and Raindrop Pro against the one-time hardware cost and electricity draw of your own NAS box, plotting the exact break-even day on a cumulative cost chart.
+Inside the vault, Okapi BM25 search ranks saved articles with weighted title and tag boosts, while selecting any passage saves a highlight into the SuperMemo SM-2 review queue.
+Finally, the packaging studio generates a ready-to-run Docker Compose file, SQLite WAL backup schedule, and Caddy or Tailscale reverse proxy configuration.
