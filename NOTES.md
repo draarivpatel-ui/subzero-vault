@@ -22,7 +22,7 @@ Hardware presets (`$120` and 6 W for a Raspberry Pi 5 kit, `$150` and 10 W for a
 ## Changes from the brief
 
 - **Pocket Premium is not in the table.** Mozilla shut Pocket down on 8 July 2025 (9to5mac and Engadget both report the date). Listing a price for a discontinued product would be made up, so the twelfth slot went to Todoist Pro and the page carries a one line note. Instapaper Premium covers the read-it-later slot.
-- **OPML was not built.** The brief's summary mentions OPML but its detailed spec names only Netscape bookmark HTML and JSON, which are in. Feed subscriptions (OPML) are a reader feature this project does not have. Adding it is a decision for Billy.
+- **OPML was not built.** The brief's summary mentions OPML but its detailed spec names only Netscape bookmark HTML and JSON, which are in. Feed subscriptions (OPML) are a reader feature this project does not have. Adding it is left for future scope.
 - **Rocket Money is not fully replaced.** The vault replaces the saved pages, bookmarks and highlights side of Readwise Reader and Raindrop. Rocket Money's bank sync and bill negotiation need account access, so the audit is a manual calculator.
 - **Backups run inside the server, not in a second container.** A second container opening the same SQLite file in WAL mode is fragile on Docker Desktop bind mounts. One process with a small cron matcher is simpler and safer.
 - **SM-2 leaves the easiness factor alone when the answer is below 3.** That follows the original SM-2 text. The brief's formula and the 1.3 floor apply to every answer of 3 or more.
@@ -50,7 +50,7 @@ The Tailscale and Caddy Compose output follows each project's documented pattern
 
 These are not for an agent to settle.
 
-- CloudFALL's review page asks that Hackatime or Lapse hours are tracked against the project and that at most 30 percent of the work is AI assisted. The code, tests and copy in this repository were written by Claude (the commits carry a `Co-Authored-By` line for that). No hours were tracked for it. Whether it can be submitted, and how to describe it, is for Aariv and Billy.
+- CloudFALL's review page asks that Hackatime or Lapse hours are tracked against the project and that at most 30 percent of the work is AI assisted. The code, tests and copy in this repository were written by Claude (the commits carry a `Co-Authored-By` line for that). No hours were tracked for it. Whether it can be submitted, and how to describe it, is for Aariv Patel.
 - The live demo is at `https://aariv.me/subzero-vault/`. The reviewer checklist wants a live link and a repo that runs from a clean clone.
 
 ## Honesty notes
