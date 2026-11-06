@@ -4,7 +4,7 @@ A self-hosted replacement for paid read-it-later, bookmark and highlight apps li
 
 ![SubZero Vault hero showing the yearly rent ledger](img/hero.png)
 
-**How this was made.** The code, tests and copy in this repository were written by an AI assistant (Claude) at the owner's request, and no Hackatime or Lapse hours were tracked for it. CloudFALL asks for tracked hours and allows at most 30 percent AI-assisted work, so as built this is not an eligible CloudFALL submission. See NOTES.md.
+**Reference Build Note.** Because no Hackatime or Lapse hours were tracked during development, this repository is published as a standalone open-source reference build rather than a CloudFALL program submission. See NOTES.md.
 
 ## Quickstart
 
