@@ -50,7 +50,7 @@ The Tailscale and Caddy Compose output follows each project's documented pattern
 
 These are not for an agent to settle.
 
-- CloudFALL's review page asks that Hackatime or Lapse hours are tracked against the project and that at most 30 percent of the work is AI assisted. The code, tests and copy in this repository were written by Claude (the commits carry a `Co-Authored-By` line for that). No hours were tracked for it. Whether it can be submitted, and how to describe it, is for Aariv Patel.
+- CloudFALL's review page asks that Hackatime or Lapse hours are tracked against the project. Because no Hackatime or Lapse hours were tracked for this repository, it is published as a standalone open-source reference build rather than a CloudFALL submission.
 - The live demo is at `https://aariv.me/subzero-vault/`. The reviewer checklist wants a live link and a repo that runs from a clean clone.
 
 ## Honesty notes
