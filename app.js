@@ -249,7 +249,9 @@
     if (!article) return '<p class="empty">Pick an article to read it here.</p>';
     const meta = ['<span>' + article.wordCount + ' words</span>', '<span>saved ' + esc(article.savedAt) + '</span>']
       .concat((article.tags || []).map(function (t) { return '<span>#' + esc(t) + '</span>'; }));
-    if (article.url) meta.push('<a href="' + esc(article.url) + '" rel="noopener noreferrer">original page</a>');
+    if (/^https?:\/\//i.test(String(article.url || ''))) {
+      meta.push('<a href="' + esc(article.url) + '" rel="noopener noreferrer">original page</a>');
+    }
     return '<div class="reader-head"><h3 class="reader-title">' + esc(article.title) + '</h3>' +
       '<div class="reader-meta">' + meta.join('') + '</div></div>' +
       '<div class="reader-body">' + renderBody(article.body, highlights) + '</div>' +
@@ -488,7 +490,63 @@
         return { title: a.title, url: a.url, tags: a.tags, folder: a.folder, note: a.note, addDate: a.savedAt };
       }));
     };
-    self.exportJson = async function () { return JSON.stringify(db, null, 2); };
+    self.exportJson = async function () {
+      const payload = { version: 1, exportedAt: today(), next: db.next, articles: db.articles, highlights: db.highlights };
+      payload.sha256 = await E.sha256Hex(E.canonicalJson(payload));
+      return JSON.stringify(payload, null, 2);
+    };
+    /* Restore a backup file. The whole file is validated and its checksum
+       verified before anything is written, then rows are merged under fresh
+       ids in one save, so a bad file can never half-apply. */
+    self.importJson = async function (text) {
+      const parsed = E.parseVaultJson(text);
+      let integrity = 'unsigned';
+      if (parsed.sha256) {
+        const digest = await E.sha256Hex(E.vaultDigestSource(parsed.raw));
+        if (digest !== parsed.sha256) throw new Error('The SHA-256 checksum in this file does not match its contents, so nothing was restored.');
+        integrity = 'verified';
+      }
+      const articlesByUrl = {};
+      const articlesByName = {};
+      db.articles.forEach(function (a) {
+        if (a.url) articlesByUrl[a.url] = a;
+        else articlesByName[a.title + '|' + a.savedAt] = a;
+      });
+      const idMap = {};
+      let skipped = 0;
+      const addArticles = [];
+      /* Ids in a backup belong to the vault that wrote it: dedupe on content
+         identity (url, or title+date for url-less rows) only. A foreign id that
+         happens to match a local one must import fresh, not merge silently. */
+      parsed.articles.forEach(function (a) {
+        const hit = a.url ? articlesByUrl[a.url] : articlesByName[a.title + '|' + (a.savedAt || today())];
+        if (hit) { idMap[a.id] = hit.id; skipped++; return; }
+        const rec = { id: 'u' + (db.next++), title: a.title, url: a.url, tags: a.tags.slice(), savedAt: a.savedAt || today(), folder: a.folder, note: a.note, body: a.body };
+        idMap[a.id] = rec.id;
+        if (rec.url) articlesByUrl[rec.url] = rec;
+        else articlesByName[rec.title + '|' + rec.savedAt] = rec;
+        addArticles.push(rec);
+      });
+      const hlKeys = {};
+      db.highlights.forEach(function (h) { hlKeys[String(h.articleId) + '|' + h.text] = true; });
+      const addHighlights = [];
+      parsed.highlights.forEach(function (h) {
+        const aid = idMap[h.articleId];
+        if (aid === undefined) { skipped++; return; }
+        const key = String(aid) + '|' + h.text;
+        if (hlKeys[key]) { skipped++; return; }
+        hlKeys[key] = true;
+        addHighlights.push({
+          id: 'h' + (db.next++), articleId: aid, text: h.text, note: h.note,
+          created: h.created || today(), due: h.due || today(),
+          repetitions: h.repetitions, interval: h.interval, ef: h.ef
+        });
+      });
+      db.articles = db.articles.concat(addArticles);
+      db.highlights = db.highlights.concat(addHighlights);
+      save();
+      return { added: addArticles.length + addHighlights.length, articles: addArticles.length, highlights: addHighlights.length, skipped: skipped, integrity: integrity };
+    };
     return self;
   }
 
@@ -536,6 +594,7 @@
     self.due = async function (day) { return (await call('GET', '/api/review/due?today=' + encodeURIComponent(day))).data.due; };
     self.review = async function (id, quality, day) { return (await call('POST', '/api/review/' + encodeURIComponent(id), { quality: quality, today: day })).data; };
     self.importBookmarks = async function (html) { return (await call('POST', '/api/import', { html: html })).data; };
+    self.importJson = async function (text) { return (await call('POST', '/api/import', { json: text })).data; };
     self.exportBookmarks = async function () { return (await call('GET', '/api/export?format=netscape')).text; };
     self.exportJson = async function () { return (await call('GET', '/api/export?format=json')).text; };
     self.reset = async function () { throw new Error('Resetting samples only applies to browser storage.'); };
@@ -910,6 +969,17 @@
       await refreshVault(true);
     });
 
+    const onImportJson = guarded(async function () {
+      const input = byId('import-json-file');
+      const file = input.files && input.files[0];
+      if (!file) { say('import-json-status', 'Choose a vault JSON backup first.', true); return; }
+      const text = await file.text();
+      const r = await state.store.importJson(text);
+      const checked = r.integrity === 'verified' ? ' Checksum verified.' : (r.integrity === 'unsigned' ? ' The file had no checksum.' : '');
+      say('import-json-status', 'Restored ' + r.added + ' item' + (r.added === 1 ? '' : 's') + (r.skipped ? ', skipped ' + r.skipped + ' already saved.' : '.') + checked);
+      await refreshVault(true);
+    });
+
     function download(name, text, type) {
       const blob = new win.Blob([text], { type: type });
       const url = win.URL.createObjectURL(blob);
@@ -1098,10 +1168,11 @@
       byId('hl-save').addEventListener('click', onHighlightSave);
       byId('add-form').addEventListener('submit', onAdd);
       byId('import-btn').addEventListener('click', onImport);
+      byId('import-json-btn').addEventListener('click', onImportJson);
       byId('export-html').addEventListener('click', onExportHtml);
       byId('export-json').addEventListener('click', onExportJson);
       byId('reset-demo').addEventListener('click', onReset);
-      byId('srv-connect').addEventListener('click', function () { connect(byId('srv-url').value, byId('srv-token').value, false); });
+      byId('srv-form').addEventListener('submit', function (e) { e.preventDefault(); connect(byId('srv-url').value, byId('srv-token').value, false); });
       byId('srv-disconnect').addEventListener('click', disconnect);
       byId('storage-pill').addEventListener('click', function () {
         const target = byId('srv-url');

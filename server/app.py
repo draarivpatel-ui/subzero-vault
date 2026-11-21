@@ -9,6 +9,7 @@ The maths mirrors engine.js. tests/fixtures/parity.json holds numbers both sides
 `python3 server/app.py --selftest` checks them, then starts a real server and drives every endpoint.
 """
 import argparse
+import hashlib
 import hmac
 import json
 import math
@@ -139,7 +140,7 @@ def make_snippet(text, terms, width=180):
     html = escape_html(src[start:end])
     pats = [re.escape(escape_html(t)) for t in (terms or []) if t]
     if pats:
-        rx = re.compile(r"(^|[^\w&#;])(" + "|".join(pats) + r")(?![^\W_])", re.I)
+        rx = re.compile(r"(^|[^\w&#;]|_)(" + "|".join(pats) + r")(?![^\W_])", re.I)
         html = rx.sub(lambda m: m.group(1) + "<mark>" + m.group(2) + "</mark>", html)
     return ("..." if start > 0 else "") + html + ("..." if end < len(src) else "")
 
@@ -153,7 +154,49 @@ def today_iso():
 
 
 def add_days_iso(iso, days):
-    return (date.fromisoformat(iso) + timedelta(days=days)).isoformat()
+    try:
+        return (date.fromisoformat(iso) + timedelta(days=days)).isoformat()
+    except OverflowError:
+        # A corrupt interval can push the date past year 9999: clamp instead of
+        # raising so a review never dies inside the calendar.
+        return date.max.isoformat() if days > 0 else date.min.isoformat()
+
+
+SM2_MAX_INTERVAL = 36500
+
+
+def _sm2_num(v, default, lo, hi):
+    """A finite float clamped to [lo, hi]; anything else becomes `default`."""
+    if isinstance(v, bool):
+        return default
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(f):
+        return default
+    return min(hi, max(lo, f))
+
+
+def _sm2_strict(v, default, lo, hi):
+    """engine.js mirror: Number.isFinite(v) only - strings and bools are not numbers."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return default
+    return min(hi, max(lo, float(v)))
+
+
+def _sm2_int(v):
+    """engine.js mirror: Number.isInteger(v) && v >= 0 else 0."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return 0
+    return int(v) if v >= 0 and float(v).is_integer() else 0
+
+
+def _sm2_floor(v):
+    """engine.js mirror: finite v >= 0 -> floor(v) else 0."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return 0
+    return int(math.floor(v)) if v >= 0 else 0
 
 
 def schedule_sm2(card, quality, today=None):
@@ -162,7 +205,11 @@ def schedule_sm2(card, quality, today=None):
         raise ValueError("quality must be an integer from 0 to 5")
     day = today or today_iso()
     base = card or {"repetitions": 0, "interval": 0, "ef": 2.5}
-    n, interval, ef = base["repetitions"], base["interval"], base["ef"]
+    # Stored cards can be corrupt (SQLite is dynamically typed), so each field
+    # is clamped to a sane SM-2 value instead of raising deep inside the maths.
+    n = _sm2_int(base.get("repetitions"))
+    interval = _sm2_floor(base.get("interval"))
+    ef = _sm2_strict(base.get("ef"), 2.5, 1.3, 5.0)
     if quality >= 3:
         if n == 0:
             interval = 1
@@ -176,6 +223,9 @@ def schedule_sm2(card, quality, today=None):
     else:
         n = 0
         interval = 1
+    # A corrupt card can carry an interval that overflows the calendar; a 100
+    # year cap keeps the schedule finite on both engines.
+    interval = min(SM2_MAX_INTERVAL, interval)
     return {"repetitions": n, "interval": interval, "ef": ef, "due": add_days_iso(day, interval), "lastQuality": quality}
 
 
@@ -193,7 +243,9 @@ _NUM_RE = re.compile(r"\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?")
 
 
 def _round2(x):
-    return math.floor(x * 100 + 0.5) / 100
+    p = x * 100 + 0.5
+    # engine.js Math.floor passes infinities through; JSON then emits null.
+    return math.floor(p) / 100 if math.isfinite(p) else p
 
 
 def _num(v, fallback):
@@ -203,8 +255,33 @@ def _num(v, fallback):
         return float(v) if math.isfinite(v) else fallback
     if isinstance(v, str):
         m = _NUM_RE.match(v)
-        return float(m.group(0)) if m else fallback
+        if not m:
+            return fallback
+        f = float(m.group(0))
+        return f if math.isfinite(f) else fallback
     return fallback
+
+
+def _json_safe(v):
+    """Infinity/NaN serialize as null, matching JSON.stringify on the JS twin."""
+    if isinstance(v, float) and not math.isfinite(v):
+        return None
+    if isinstance(v, dict):
+        return dict((k, _json_safe(x)) for k, x in v.items())
+    if isinstance(v, list):
+        return [_json_safe(x) for x in v]
+    return v
+
+
+def _loads_tags(v):
+    """Tag column JSON that survives a corrupt row instead of 500ing the read."""
+    if isinstance(v, list):
+        return [str(t) for t in v]
+    try:
+        t = json.loads(v) if isinstance(v, str) else None
+    except (TypeError, ValueError):
+        return []
+    return [str(x) for x in t] if isinstance(t, list) else []
 
 
 def _clamp(v, lo, hi):
@@ -643,6 +720,140 @@ def export_netscape(items):
 
 
 # ---------------------------------------------------------------------------
+# Vault backup JSON: canonical form, SHA-256 and strict restore validation
+# ---------------------------------------------------------------------------
+
+def _canon(v):
+    if isinstance(v, dict):
+        return {k: _canon(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_canon(x) for x in v]
+    if isinstance(v, float) and v.is_integer():
+        return int(v)
+    return v
+
+
+def canonical_json(v):
+    """Deterministic JSON for hashing: sorted keys, no whitespace, integral
+    floats serialised as ints so the engine.js twin emits the same bytes."""
+    return json.dumps(_canon(v), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def sha256_hex(text):
+    return hashlib.sha256(str(text).encode("utf-8")).hexdigest()
+
+
+def vault_digest_source(payload):
+    return canonical_json({k: v for k, v in (payload or {}).items() if k != "sha256"})
+
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _row_tags(v):
+    if isinstance(v, str):
+        try:
+            p = json.loads(v)
+            v = p if isinstance(p, list) else v.split(",")
+        except ValueError:
+            v = v.split(",")
+    if not isinstance(v, list):
+        return []
+    out = []
+    for t in v:
+        s = str(t).strip().lower()
+        if s and s not in out:
+            out.append(s)
+    return out[:20]
+
+
+def _clean_num(v, lo, hi, default, integer=False):
+    n = _sm2_num(v, default, lo, hi)
+    return int(math.floor(n)) if integer else n
+
+
+def _norm_article_row(row, i):
+    if not isinstance(row, dict):
+        raise ValueError("articles[%d] is not an object" % i)
+    url = str(row.get("url") or "").strip()
+    if url and not re.match(r"^https?://", url, re.I):
+        raise ValueError("articles[%d] has a non-http(s) address" % i)
+    saved_at = str(row.get("savedAt") or row.get("saved_at") or "")
+    if not _ISO_DATE_RE.match(saved_at):
+        try:
+            saved_at = datetime.fromtimestamp(float(row["add_date"]), tz=timezone.utc).date().isoformat() \
+                if isinstance(row.get("add_date"), (int, float)) else ""
+        except (TypeError, ValueError, OverflowError, OSError):
+            saved_at = ""
+    title = str(row.get("title") or "").strip()
+    return {
+        "id": str(row.get("id") if row.get("id") is not None else "a%d" % i),
+        "title": title or url or "Untitled",
+        "url": url,
+        "tags": _row_tags(row.get("tags")),
+        "savedAt": saved_at,
+        "folder": str(row.get("folder") or ""),
+        "note": str(row.get("note") or "")[:1000],
+        "body": str(row.get("body") or "")[:400000],
+    }
+
+
+def _norm_highlight_row(row, i):
+    if not isinstance(row, dict):
+        raise ValueError("highlights[%d] is not an object" % i)
+    text = str(row.get("text") or "").strip()
+    if not text:
+        raise ValueError("highlights[%d] has no text" % i)
+    due = str(row.get("due") or "")
+    if not _ISO_DATE_RE.match(due):
+        due = ""
+    created = str(row.get("created") or "")
+    if not _ISO_DATE_RE.match(created):
+        created = due
+    aid = row.get("articleId", row.get("article_id", ""))
+    return {
+        "id": str(row.get("id") if row.get("id") is not None else "h%d" % i),
+        "articleId": str(aid),
+        "text": text[:4000],
+        "note": str(row.get("note") or "").strip()[:200],
+        "created": created,
+        "due": due,
+        "repetitions": _clean_num(row.get("repetitions"), 0, 100000, 0, True),
+        "interval": _clean_num(row.get("interval", row.get("interval_days")), 0, 100000, 0, True),
+        "ef": _clean_num(row.get("ef"), 1.3, 5.0, 2.5, False),
+    }
+
+
+def parse_vault_json(payload):
+    """Strictly validate a vault backup. Raises ValueError on ANY malformed
+    record so callers can apply the file atomically. Accepts a JSON string or
+    an already-decoded object, in either export shape."""
+    if isinstance(payload, str):
+        try:
+            o = json.loads(payload)
+        except ValueError:
+            raise ValueError("that file is not valid JSON")
+    else:
+        o = payload
+    if not isinstance(o, dict):
+        raise ValueError("that file is not a vault backup")
+    if o.get("version") is not None and o.get("version") != 1:
+        raise ValueError("backup version %r is not supported" % (o.get("version"),))
+    if not isinstance(o.get("articles"), list) or not isinstance(o.get("highlights"), list):
+        raise ValueError('the backup needs "articles" and "highlights" arrays')
+    articles = [_norm_article_row(r, i) for i, r in enumerate(o["articles"])]
+    highlights = [_norm_highlight_row(r, i) for i, r in enumerate(o["highlights"])]
+    for rows, label in ((articles, "article"), (highlights, "highlight")):
+        seen = set()
+        for r in rows:
+            if r["id"] in seen:
+                raise ValueError('duplicate %s id "%s"' % (label, r["id"]))
+            seen.add(r["id"])
+    return {"articles": articles, "highlights": highlights,
+            "sha256": o.get("sha256") if isinstance(o.get("sha256"), str) else None, "raw": o}
+
+
+# ---------------------------------------------------------------------------
 # Cron
 # ---------------------------------------------------------------------------
 
@@ -761,7 +972,7 @@ class Store(object):
     @staticmethod
     def _article(row, with_body):
         d = {
-            "id": row["id"], "url": row["url"], "title": row["title"], "tags": json.loads(row["tags"]),
+            "id": row["id"], "url": row["url"], "title": row["title"], "tags": _loads_tags(row["tags"]),
             "folder": row["folder"], "note": row["note"], "savedAt": row["saved_at"],
             "wordCount": word_count(row["body"]),
         }
@@ -892,7 +1103,7 @@ class Store(object):
             if self._index is None or self._index[0] != self._index_version:
                 with closing(self._conn()) as c:
                     rows = c.execute("SELECT id, title, body, tags, url FROM articles").fetchall()
-                docs = [{"id": r["id"], "title": r["title"], "body": r["body"] or r["url"], "tags": json.loads(r["tags"])} for r in rows]
+                docs = [{"id": r["id"], "title": r["title"], "body": r["body"] or r["url"], "tags": _loads_tags(r["tags"])} for r in rows]
                 self._index = (self._index_version, build_index(docs), dict((r["id"], r) for r in rows))
             return self._index
 
@@ -902,7 +1113,7 @@ class Store(object):
         out = []
         for h in hits:
             r = rows[h["id"]]
-            tags = json.loads(r["tags"])
+            tags = _loads_tags(r["tags"])
             if tag and tag.lower() not in tags:
                 continue
             out.append({
@@ -927,17 +1138,75 @@ class Store(object):
         with closing(self._conn()) as c:
             return c.execute("SELECT 1 FROM articles WHERE url=?", (url,)).fetchone() is not None
 
+    def import_vault_json(self, payload):
+        """Merge a backup file. Everything is validated and the checksum verified
+        before the transaction opens, so a bad file can never half-apply. Ids are
+        remapped to fresh rowids, keeping highlight -> article links."""
+        parsed = parse_vault_json(payload)
+        integrity = "unsigned"
+        if parsed["sha256"]:
+            if sha256_hex(vault_digest_source(parsed["raw"])) != parsed["sha256"]:
+                raise ApiError(400, "the SHA-256 checksum in this file does not match its contents, so nothing was restored")
+            integrity = "verified"
+        added = {"articles": 0, "highlights": 0, "skipped": 0}
+        with self.lock, closing(self._conn()) as c:
+            url_to_id = dict((r["url"], r["id"]) for r in c.execute("SELECT id, url FROM articles WHERE url <> ''"))
+            name_to_id = dict(((r["title"], r["saved_at"]), r["id"])
+                              for r in c.execute("SELECT id, title, saved_at FROM articles WHERE url = ''"))
+            id_map = {}
+            for a in parsed["articles"]:
+                # Ids in a backup belong to the vault that wrote it: dedupe on
+                # content identity (url, or title+date for url-less rows) only.
+                if not a["url"] and (a["title"], a["savedAt"] or today_iso()) in name_to_id:
+                    id_map[a["id"]] = name_to_id[(a["title"], a["savedAt"] or today_iso())]
+                    added["skipped"] += 1
+                    continue
+                if a["url"] and a["url"] in url_to_id:
+                    id_map[a["id"]] = url_to_id[a["url"]]
+                    added["skipped"] += 1
+                    continue
+                cur = c.execute("INSERT INTO articles (url, title, body, tags, folder, note, saved_at) VALUES (?,?,?,?,?,?,?)",
+                                (a["url"], a["title"], a["body"], json.dumps(a["tags"]), a["folder"], a["note"],
+                                 a["savedAt"] or today_iso()))
+                id_map[a["id"]] = cur.lastrowid
+                if a["url"]:
+                    url_to_id[a["url"]] = cur.lastrowid
+                else:
+                    name_to_id[(a["title"], a["savedAt"] or today_iso())] = cur.lastrowid
+                added["articles"] += 1
+            have = set((r["article_id"], r["text"]) for r in c.execute("SELECT article_id, text FROM highlights"))
+            for h in parsed["highlights"]:
+                aid = id_map.get(h["articleId"])
+                if aid is None:
+                    added["skipped"] += 1
+                    continue
+                if (aid, h["text"]) in have:
+                    added["skipped"] += 1
+                    continue
+                have.add((aid, h["text"]))
+                c.execute("INSERT INTO highlights (article_id, text, note, created, due, repetitions, interval_days, ef) "
+                          "VALUES (?,?,?,?,?,?,?,?)",
+                          (aid, h["text"], h["note"], h["created"] or today_iso(), h["due"] or today_iso(),
+                           h["repetitions"], h["interval"], h["ef"]))
+                added["highlights"] += 1
+            c.commit()
+            self._bump()
+        return {"added": added["articles"] + added["highlights"], "articles": added["articles"],
+                "highlights": added["highlights"], "skipped": added["skipped"], "integrity": integrity}
+
     def export_items(self):
         with closing(self._conn()) as c:
             rows = c.execute("SELECT * FROM articles ORDER BY id").fetchall()
-        return [{"title": r["title"], "url": r["url"], "tags": json.loads(r["tags"]), "folder": r["folder"],
+        return [{"title": r["title"], "url": r["url"], "tags": _loads_tags(r["tags"]), "folder": r["folder"],
                  "note": r["note"], "addDate": r["saved_at"], "body": r["body"]} for r in rows if r["url"]]
 
     def export_json(self):
         with closing(self._conn()) as c:
             articles = [dict(r) for r in c.execute("SELECT * FROM articles ORDER BY id")]
             highlights = [dict(r) for r in c.execute("SELECT * FROM highlights ORDER BY id")]
-        return {"version": 1, "articles": articles, "highlights": highlights}
+        payload = {"version": 1, "exported_at": today_iso(), "articles": articles, "highlights": highlights}
+        payload["sha256"] = sha256_hex(canonical_json(payload))
+        return payload
 
     def backup(self, directory, keep=14):
         os.makedirs(directory, exist_ok=True)
@@ -1037,6 +1306,18 @@ def make_handler(cfg):
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(body)
+
+        @staticmethod
+        def _row_id(s):
+            # SQLite binds raise OverflowError above int64; a bigger digit string
+            # is simply an id that cannot exist, so answer 404 like a missing row.
+            try:
+                v = int(s)
+            except (TypeError, ValueError):
+                raise ApiError(404, "not found")
+            if v > 9223372036854775807 or v < -9223372036854775808:
+                raise ApiError(404, "not found")
+            return v
 
         def _json(self, status, obj):
             self._send(status, json.dumps(obj))
@@ -1160,18 +1441,18 @@ def make_handler(cfg):
                     return self._add_article(self._read_json())
             if len(seg) == 2 and seg[0] == "articles" and seg[1].isdigit():
                 if method == "GET":
-                    return self._json(200, store.get_article(int(seg[1])))
+                    return self._json(200, store.get_article(self._row_id(seg[1])))
                 if method == "DELETE":
-                    store.delete_article(int(seg[1]))
+                    store.delete_article(self._row_id(seg[1]))
                     return self._json(200, {"deleted": True})
             if len(seg) == 3 and seg[0] == "articles" and seg[1].isdigit() and seg[2] == "highlights" and method == "POST":
                 body = self._read_json()
-                return self._json(201, store.add_highlight(int(seg[1]), body.get("text"), body.get("note")))
+                return self._json(201, store.add_highlight(self._row_id(seg[1]), body.get("text"), body.get("note")))
             if seg == ["highlights"] and method == "GET":
                 art = (query.get("article") or [""])[0]
-                return self._json(200, {"highlights": store.list_highlights(int(art) if art.isdigit() else None)})
+                return self._json(200, {"highlights": store.list_highlights(self._row_id(art) if art.isdigit() else None)})
             if len(seg) == 2 and seg[0] == "highlights" and seg[1].isdigit() and method == "DELETE":
-                store.delete_highlight(int(seg[1]))
+                store.delete_highlight(self._row_id(seg[1]))
                 return self._json(200, {"deleted": True})
             if seg == ["review", "due"] and method == "GET":
                 today = (query.get("today") or [None])[0]
@@ -1183,7 +1464,7 @@ def make_handler(cfg):
                 today = body.get("today")
                 if today is not None and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(today)):
                     raise ApiError(400, "today must be YYYY-MM-DD")
-                return self._json(200, store.review(int(seg[1]), body.get("quality"), today))
+                return self._json(200, store.review(self._row_id(seg[1]), body.get("quality"), today))
             if seg == ["search"] and method == "GET":
                 q = (query.get("q") or [""])[0]
                 try:
@@ -1193,6 +1474,11 @@ def make_handler(cfg):
                 return self._json(200, {"query": q, "results": store.search(q, (query.get("tag") or [None])[0], limit)})
             if seg == ["import"] and method == "POST":
                 body = self._read_json()
+                if body.get("json") is not None:
+                    try:
+                        return self._json(200, store.import_vault_json(body.get("json")))
+                    except ValueError as e:
+                        raise ApiError(400, str(e))
                 return self._json(200, store.import_bookmarks(body.get("html") or ""))
             if seg == ["export"] and method == "GET":
                 fmt = (query.get("format") or ["netscape"])[0]
@@ -1203,7 +1489,7 @@ def make_handler(cfg):
                                       {"Content-Disposition": 'attachment; filename="subzero-bookmarks.html"'})
                 raise ApiError(400, "format must be netscape or json")
             if seg == ["savings"] and method == "POST":
-                return self._json(200, compute_savings(self._read_json()))
+                return self._json(200, _json_safe(compute_savings(self._read_json())))
             raise ApiError(404, "no such endpoint")
 
         def _add_article(self, body):
@@ -1451,7 +1737,96 @@ def selftest():
         ck.ok(text.startswith("<!DOCTYPE NETSCAPE-Bookmark-file-1>") and "https://example.org/two" in text, "export netscape")
         ck.eq(sorted(i["url"] for i in parse_netscape(text) if "example.org" in i["url"]), ["https://example.org/one", "https://example.org/two"], "export re-imports")
         st, _, body = _call(base, "GET", "/api/export?format=json", token=token)
-        ck.ok(len(json.loads(body)["articles"]) >= 4, "export json holds the articles")
+        exported = json.loads(body)
+        ck.ok(len(exported["articles"]) >= 4, "export json holds the articles")
+        ck.ok(re.match(r"^[0-9a-f]{64}$", exported.get("sha256") or ""), "export json carries a sha256")
+        ck.eq(sha256_hex(vault_digest_source(exported)), exported["sha256"], "export checksum verifies against its contents")
+
+        backup = {"version": 1, "articles": [
+                      {"id": "u1", "title": "Restored page", "url": "https://restored.example/a", "tags": ["restore"],
+                       "savedAt": "2026-11-01", "body": "restored body text"},
+                      {"id": "u2", "title": "No address", "url": "", "tags": [], "savedAt": "2026-11-02", "body": "x"}],
+                  "highlights": [
+                      {"id": "h9", "articleId": "u1", "text": "a restored highlight", "note": "", "created": "2026-11-01",
+                       "due": "2026-11-03", "repetitions": 1, "interval": 6, "ef": 2.6},
+                      {"id": "h10", "articleId": "missing", "text": "dangling", "due": "2026-11-03"}]}
+        backup["sha256"] = sha256_hex(canonical_json(backup))
+        st, _, body = _call(base, "POST", "/api/import", {"json": backup}, token)
+        restored = json.loads(body)
+        ck.eq(st, 200, "json restore is accepted")
+        ck.eq((restored["articles"], restored["highlights"]), (2, 1), "two articles and one linked highlight restored")
+        ck.eq(restored["integrity"], "verified", "checksum was verified")
+        st, _, body = _call(base, "GET", "/api/search?q=restored", token=token)
+        ck.ok(any(r["url"] == "https://restored.example/a" for r in json.loads(body)["results"]), "restored article is searchable")
+        st, _, body = _call(base, "POST", "/api/import", {"json": backup}, token)
+        ck.eq(json.loads(body)["added"], 0, "re-importing the same file is a no-op")
+        tampered = json.loads(json.dumps(backup))
+        tampered["articles"][0]["title"] = "Edited after signing"
+        st, _, _ = _call(base, "POST", "/api/import", {"json": tampered}, token)
+        ck.eq(st, 400, "a tampered checksum is refused")
+        st, _, _ = _call(base, "POST", "/api/import", {"json": {"version": 1, "articles": [{"url": "javascript:alert(1)"}], "highlights": []}}, token)
+        ck.eq(st, 400, "a javascript url inside a backup is refused")
+        st, _, _ = _call(base, "POST", "/api/import", {"json": "{not json"}, token)
+        ck.eq(st, 400, "unparseable backup JSON is a 400")
+        st, _, body = _call(base, "GET", "/api/search?q=restored", token=token)
+        for r in json.loads(body)["results"]:
+            st, _, _ = _call(base, "DELETE", "/api/articles/%d" % r["id"], token=token)
+            ck.eq(st, 200, "restored article deletes cleanly, highlight included")
+
+        # Adversarial findings: DB-level corruption and hostile inputs must not 500.
+        with closing(store._conn()) as c:
+            c.execute("UPDATE articles SET tags='{bad json' WHERE id=?", (art["id"],))
+            c.execute("INSERT INTO highlights (article_id, text, note, created, due, repetitions, interval_days, ef) "
+                      "VALUES (?,?,?,?,?,?,?,?)", (art["id"], "corrupt card", "", today_iso(), today_iso(), "junk", "1e9", "3.0"))
+            hid = c.execute("SELECT MAX(id) FROM highlights").fetchone()[0]
+            c.commit()
+        st, _, _ = _call(base, "GET", "/api/articles", token=token)
+        ck.eq(st, 200, "a corrupt tags row still lists")
+        st, _, _ = _call(base, "GET", "/api/articles/%d" % art["id"], token=token)
+        ck.eq(st, 200, "a corrupt tags row still reads")
+        st, _, _ = _call(base, "GET", "/api/search?q=compose", token=token)
+        ck.eq(st, 200, "a corrupt tags row still searches")
+        st, _, body = _call(base, "POST", "/api/review/%d" % hid, {"quality": 5, "today": "2026-11-21"}, token)
+        ck.eq(st, 200, "review of a corrupt card answers instead of 500")
+        st, _, _ = _call(base, "GET", "/api/articles/99999999999999999999", token=token)
+        ck.eq(st, 404, "an id above int64 answers 404, not 500")
+        st, _, _ = _call(base, "DELETE", "/api/highlights/99999999999999999999", token=token)
+        ck.eq(st, 404, "a highlight id above int64 answers 404")
+        st, _, _ = _call(base, "GET", "/api/highlights?article=99999999999999999999", token=token)
+        ck.eq(st, 404, "an article query above int64 answers 404")
+        st, _, _ = _call(base, "POST", "/api/savings", {"hardwareCost": "1e999"}, token)
+        ck.eq(st, 200, "savings survives a 1e999 string")
+        st, _, _ = _call(base, "POST", "/api/savings", {"watts": "1e999", "years": "1e999"}, token)
+        ck.eq(st, 200, "savings survives 1e999 watts and years")
+        st, _, _ = _call(base, "POST", "/api/savings", {"hardwareCost": 1e308}, token)
+        ck.eq(st, 200, "savings survives a 1e308 float")
+
+        foreign = {"version": 1,
+                   "articles": [{"id": str(art["id"]), "title": "Foreign page", "url": "https://foreign.example/p",
+                                  "savedAt": "2026-11-01", "tags": [], "body": "x"}],
+                   "highlights": [{"id": "fh1", "articleId": str(art["id"]), "text": "foreign highlight", "due": "2026-11-03"}]}
+        foreign["sha256"] = sha256_hex(canonical_json(foreign))
+        st, _, body = _call(base, "POST", "/api/import", {"json": foreign}, token)
+        r = json.loads(body)
+        ck.eq(r["articles"], 1, "a foreign id colliding with a local row still imports fresh")
+        st, _, body = _call(base, "GET", "/api/search?q=foreign", token=token)
+        new_art = next((x for x in json.loads(body)["results"] if x["url"] == "https://foreign.example/p"), None)
+        ck.ok(new_art is not None, "the foreign article is searchable")
+        st, _, body = _call(base, "GET", "/api/highlights?article=%d" % new_art["id"], token=token)
+        ck.eq([h["text"] for h in json.loads(body)["highlights"]], ["foreign highlight"], "foreign highlight links to its new row")
+        st, _, body = _call(base, "GET", "/api/highlights?article=%d" % art["id"], token=token)
+        ck.ok("foreign highlight" not in [h["text"] for h in json.loads(body)["highlights"]], "foreign highlight is not mislinked to the unrelated row")
+        st, _, _ = _call(base, "DELETE", "/api/articles/%d" % new_art["id"], token=token)
+        ck.eq(st, 200, "foreign article deletes cleanly")
+
+        ck.eq(make_snippet("a foo_bar pair", ["bar"]).count("<mark>"), 1, "underscore still marks the term")
+        ck.eq(schedule_sm2({"repetitions": 2, "interval": 6, "ef": "3.0"}, 5, "2026-11-21")["interval"], 15,
+              "a string ef reads as 2.5 like the JS twin")
+        out = schedule_sm2({"repetitions": 13, "interval": 2038878, "ef": 3.8}, 5, "2026-11-21")
+        ck.eq(out["interval"], 36500, "a runaway interval clamps at 100 years")
+        ck.ok(re.match(r"^\d{4}-\d{2}-\d{2}$", out["due"]), "a clamped due stays an ISO date")
+        out = schedule_sm2({"repetitions": 13, "interval": 2038878, "ef": 3.8}, 5, "9999-12-30")
+        ck.eq(out["due"], "9999-12-31", "a due at the calendar edge clamps to the last day")
 
         st, _, body = _call(base, "POST", "/api/savings", {"hardwareCost": 0}, token)
         ck.eq(json.loads(body)["breakEvenDay"], 0, "savings endpoint")

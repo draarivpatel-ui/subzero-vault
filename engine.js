@@ -178,8 +178,21 @@
   }
 
   function addDaysIso(iso, days) {
-    const p = String(iso).split('-').map(Number);
-    return new Date(Date.UTC(p[0], p[1] - 1, p[2] + days)).toISOString().slice(0, 10);
+    const s = String(iso);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new RangeError('iso must be YYYY-MM-DD, got "' + s + '"');
+    if (!Number.isFinite(days)) throw new RangeError('days must be a finite number');
+    const p = s.split('-').map(Number);
+    /* Reject rollover dates like 2026-13-45 instead of silently shifting. */
+    if (new Date(Date.UTC(p[0], p[1] - 1, p[2])).toISOString().slice(0, 10) !== s) {
+      throw new RangeError('"' + s + '" is not a real calendar date');
+    }
+    const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + Math.floor(days)));
+    /* A corrupt interval can push the date past the calendar: clamp instead of
+       returning an extended-year string that parses as nothing. */
+    const y = d.getUTCFullYear();
+    if (y > 9999) return '9999-12-31';
+    if (y < 1) return '0001-01-01';
+    return d.toISOString().slice(0, 10);
   }
 
   function newCard(today) {
@@ -193,9 +206,11 @@
     }
     const base = card || newCard(today);
     const day = today || todayIso();
-    let n = base.repetitions;
-    let interval = base.interval;
-    let ef = base.ef;
+    /* Stored cards can be corrupt (hand-edited backups, older formats), so each
+       field is clamped to a sane SM-2 value instead of propagating NaN. */
+    let n = Number.isInteger(base.repetitions) && base.repetitions >= 0 ? base.repetitions : 0;
+    let interval = Number.isFinite(base.interval) && base.interval >= 0 ? Math.floor(base.interval) : 0;
+    let ef = Number.isFinite(base.ef) ? Math.min(5, Math.max(1.3, base.ef)) : 2.5;
     if (quality >= 3) {
       if (n === 0) interval = 1;
       else if (n === 1) interval = 6;
@@ -207,6 +222,9 @@
       n = 0;
       interval = 1;
     }
+    /* A corrupt card can carry an interval that overflows the calendar; a 100
+       year cap keeps the schedule finite on both engines (SM2_MAX_INTERVAL). */
+    interval = Math.min(36500, interval);
     return { repetitions: n, interval: interval, ef: ef, due: addDaysIso(day, interval), lastQuality: quality };
   }
 
@@ -845,6 +863,142 @@
     return { compose: y.join('\n') + '\n', env: e.join('\n') + '\n', caddyfile: caddyfile, backupEnabled: !!cronOk };
   }
 
+  // ---------------------------------------------------------------------------
+  // Vault backup JSON: canonical form, SHA-256 and strict restore validation
+  // ---------------------------------------------------------------------------
+
+  /* Deterministic JSON for hashing: sorted object keys, no whitespace.
+     The Python twin normalises integral floats to ints the same way. */
+  function canonicalJson(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(canonicalJson).join(',') + ']';
+    return '{' + Object.keys(v).sort().map(function (k) {
+      return JSON.stringify(k) + ':' + canonicalJson(v[k]);
+    }).join(',') + '}';
+  }
+
+  /* SHA-256 hex of a UTF-8 string: WebCrypto in the page, node:crypto in tests. */
+  async function sha256Hex(text) {
+    const data = new TextEncoder().encode(String(text));
+    const subtle = typeof crypto !== 'undefined' && crypto && crypto.subtle;
+    if (subtle && subtle.digest) {
+      const buf = await subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    }
+    if (typeof require === 'function') {
+      try { return require('node:crypto').createHash('sha256').update(data).digest('hex'); } catch (e) { /* fall through */ }
+    }
+    return null;
+  }
+
+  /* Everything an integrity field was computed over: the payload minus sha256. */
+  function vaultDigestSource(payload) {
+    const rest = {};
+    Object.keys(payload || {}).forEach(function (k) {
+      if (k !== 'sha256') rest[k] = payload[k];
+    });
+    return canonicalJson(rest);
+  }
+
+  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  function rowTags(v) {
+    let list = v;
+    if (typeof v === 'string') {
+      try { const p = JSON.parse(v); list = Array.isArray(p) ? p : v.split(','); }
+      catch (e) { list = v.split(','); }
+    }
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    list.forEach(function (t) {
+      const s = String(t).trim().toLowerCase();
+      if (s && out.indexOf(s) < 0) out.push(s);
+    });
+    return out.slice(0, 20);
+  }
+
+  function cleanNumber(v, lo, hi, fallback, integer) {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    const val = Number.isFinite(n) ? n : fallback;
+    const clamped = Math.min(hi, Math.max(lo, val));
+    return integer ? Math.floor(clamped) : clamped;
+  }
+
+  function normalizeArticleRow(row, i) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error('articles[' + i + '] is not an object.');
+    }
+    const url = String(row.url || '').trim();
+    if (url && !/^https?:\/\//i.test(url)) {
+      throw new Error('articles[' + i + '] has a non-http(s) address.');
+    }
+    let savedAt = String(row.savedAt || row.saved_at || '');
+    if (!ISO_DATE_RE.test(savedAt)) {
+      savedAt = Number.isFinite(row.add_date) ? new Date(row.add_date * 1000).toISOString().slice(0, 10) : '';
+    }
+    const title = String(row.title == null ? '' : row.title).trim();
+    return {
+      id: row.id === undefined || row.id === null ? 'a' + i : String(row.id),
+      title: title || url || 'Untitled',
+      url: url,
+      tags: rowTags(row.tags),
+      savedAt: savedAt,
+      folder: String(row.folder || ''),
+      note: String(row.note || '').slice(0, 1000),
+      body: String(row.body || '').slice(0, 400000)
+    };
+  }
+
+  function normalizeHighlightRow(row, i) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error('highlights[' + i + '] is not an object.');
+    }
+    const text = String(row.text || '').trim();
+    if (!text) throw new Error('highlights[' + i + '] has no text.');
+    let due = String(row.due || '');
+    if (!ISO_DATE_RE.test(due)) due = '';
+    let created = String(row.created || '');
+    if (!ISO_DATE_RE.test(created)) created = due;
+    return {
+      id: row.id === undefined || row.id === null ? 'h' + i : String(row.id),
+      articleId: String(row.articleId !== undefined ? row.articleId : (row.article_id !== undefined ? row.article_id : '')),
+      text: text.slice(0, 4000),
+      note: String(row.note || '').trim().slice(0, 200),
+      created: created,
+      due: due,
+      repetitions: cleanNumber(row.repetitions, 0, 100000, 0, true),
+      interval: cleanNumber(row.interval !== undefined ? row.interval : row.interval_days, 0, 100000, 0, true),
+      ef: cleanNumber(row.ef, 1.3, 5, 2.5, false)
+    };
+  }
+
+  /* Strictly validate a vault backup file. Throws on ANY malformed record so a
+     caller can apply the file atomically. Accepts the local-store shape, the
+     server export shape (snake_case rows) and the older raw-db export. */
+  function parseVaultJson(text) {
+    let o = null;
+    try { o = typeof text === 'string' ? JSON.parse(text) : text; }
+    catch (e) { throw new Error('That file is not valid JSON.'); }
+    if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('That file is not a vault backup.');
+    if (o.version !== undefined && o.version !== 1) throw new Error('Backup version ' + o.version + ' is not supported.');
+    if (!Array.isArray(o.articles) || !Array.isArray(o.highlights)) {
+      throw new Error('The backup needs "articles" and "highlights" arrays.');
+    }
+    const articles = o.articles.map(normalizeArticleRow);
+    const highlights = o.highlights.map(normalizeHighlightRow);
+    const seenA = new Set();
+    const seenH = new Set();
+    articles.forEach(function (a) {
+      if (seenA.has(a.id)) throw new Error('Duplicate article id "' + a.id + '".');
+      seenA.add(a.id);
+    });
+    highlights.forEach(function (h) {
+      if (seenH.has(h.id)) throw new Error('Duplicate highlight id "' + h.id + '".');
+      seenH.add(h.id);
+    });
+    return { articles: articles, highlights: highlights, sha256: typeof o.sha256 === 'string' ? o.sha256 : null, raw: o };
+  }
+
   return {
     STOPWORDS: STOPWORDS,
     BM25_K1: BM25_K1,
@@ -873,6 +1027,10 @@
     parseNetscapeBookmarks: parseNetscapeBookmarks,
     exportNetscapeBookmarks: exportNetscapeBookmarks,
     validateCron: validateCron,
-    generateDockerCompose: generateDockerCompose
+    generateDockerCompose: generateDockerCompose,
+    canonicalJson: canonicalJson,
+    sha256Hex: sha256Hex,
+    vaultDigestSource: vaultDigestSource,
+    parseVaultJson: parseVaultJson
   };
 }));

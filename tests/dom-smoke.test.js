@@ -651,6 +651,9 @@ function fakeServer(options) {
     if (/\/api\/highlights/.test(url)) return respond(200, { highlights: [] });
     if (/\/api\/review\/due/.test(url)) return respond(200, { due: [] });
     if (/\/api\/search/.test(url)) return respond(200, { results: [{ id: 7, title: 'Server article', tags: ['srv'], score: 2.5, snippet: '<mark>hello</mark>' }] });
+    if (/\/api\/import$/.test(url) && init.method === 'POST') return respond(200, { added: 0, articles: 0, highlights: 0, skipped: 0, integrity: 'verified' });
+    if (/\/api\/export\?format=json/.test(url)) return respond(200, { version: 1, articles: [], highlights: [] });
+    if (/\/api\/export/.test(url)) return respond(200, '<!DOCTYPE NETSCAPE-Bookmark-file-1>');
     return respond(404, { error: 'unexpected ' + url });
   };
   fn.calls = calls;
@@ -829,4 +832,132 @@ test('the chart label halo, sticky results and touch sizes are in the stylesheet
   assert.ok(/\.chart-label,\s*\.cross-text\s*\{[^}]*paint-order:\s*stroke/.test(CSS));
   assert.ok(/\.audit-out\s*\{\s*position:\s*sticky/.test(CSS));
   assert.ok(/@media \(pointer: coarse\)/.test(CSS));
+});
+
+// ---------------------------------------------------------------------------
+// Vault JSON backup export and restore
+// ---------------------------------------------------------------------------
+
+test('a JSON export verifies against its own checksum', async () => {
+  const st = App.LocalStore(createEnvironment().storage, () => '2026-10-25');
+  const payload = JSON.parse(await st.exportJson());
+  assert.equal(payload.version, 1);
+  assert.ok(/^[0-9a-f]{64}$/.test(payload.sha256));
+  assert.equal(await E.sha256Hex(E.vaultDigestSource(payload)), payload.sha256);
+});
+
+test('importJson merges a signed backup under fresh ids and keeps highlight links', async () => {
+  const st = App.LocalStore(createEnvironment().storage, () => '2026-10-25');
+  const backup = {
+    version: 1,
+    articles: [
+      { id: 'x1', title: 'Restored page', url: 'https://restored.test/a', tags: ['r'], savedAt: '2026-10-01', body: 'b' },
+      { id: 'x2', title: 'Note only', url: '', tags: [], savedAt: '2026-10-02', body: 'n' }],
+    highlights: [
+      { id: 'y1', articleId: 'x1', text: 'kept line', note: '', created: '2026-10-01', due: '2026-10-20', repetitions: 1, interval: 6, ef: 2.6 },
+      { id: 'y2', articleId: 'ghost', text: 'orphan', due: '2026-10-21' }]
+  };
+  backup.sha256 = await E.sha256Hex(E.vaultDigestSource(backup));
+  const r = await st.importJson(JSON.stringify(backup));
+  assert.equal(r.integrity, 'verified');
+  assert.deepEqual([r.articles, r.highlights, r.skipped], [2, 1, 1]);
+  const list = await st.list();
+  const art = list.find((a) => a.url === 'https://restored.test/a');
+  const hls = await st.highlights(art.id);
+  assert.equal(hls.length, 1);
+  assert.equal(hls[0].articleId, art.id, 'highlight points at the new article id');
+  const r2 = await st.importJson(JSON.stringify(backup));
+  assert.equal(r2.added, 0, 're-importing the same file is a no-op');
+});
+
+test('importJson refuses tampered, malformed and hostile backups before writing', async () => {
+  const st = App.LocalStore(createEnvironment().storage, () => '2026-10-25');
+  const before = (await st.list()).length;
+  const good = { version: 1, articles: [{ id: 'a', url: 'https://ok.test/', title: 't' }], highlights: [] };
+  good.sha256 = await E.sha256Hex(E.vaultDigestSource(good));
+  const tampered = JSON.parse(JSON.stringify(good));
+  tampered.articles[0].title = 'changed after signing';
+  await assert.rejects(() => st.importJson(JSON.stringify(tampered)), /checksum/);
+  await assert.rejects(() => st.importJson('{not json'), /not valid JSON/);
+  await assert.rejects(() => st.importJson(JSON.stringify({ version: 9, articles: [], highlights: [] })), /version/);
+  await assert.rejects(() => st.importJson(JSON.stringify({ version: 1, articles: [{ url: 'javascript:alert(1)' }], highlights: [] })), /http/);
+  await assert.rejects(() => st.importJson(JSON.stringify({ version: 1, articles: [{ id: 1, url: 'https://a.test/' }, { id: 1, url: 'https://b.test/' }], highlights: [] })), /[Dd]uplicate/);
+  assert.equal((await st.list()).length, before, 'a refused file writes nothing');
+});
+
+test('parseVaultJson normalises the server export shape', () => {
+  const p = E.parseVaultJson(JSON.stringify({
+    version: 1,
+    articles: [{ id: 3, url: 'https://s.test/', title: 'S', tags: '["a","b"]', saved_at: '2026-01-02', body: '' }],
+    highlights: [{ id: 4, article_id: 3, text: 'hi', note: '', created: '2026-01-02', due: '2026-01-09', repetitions: 2, interval_days: 6, ef: 2.5 }]
+  }));
+  assert.equal(p.articles[0].savedAt, '2026-01-02');
+  assert.deepEqual(p.articles[0].tags, ['a', 'b']);
+  assert.equal(p.highlights[0].articleId, '3');
+  assert.equal(p.highlights[0].interval, 6);
+});
+
+test('ServerStore sends the backup text and export hits the json format', async () => {
+  const f = fakeServer({});
+  const st = App.ServerStore('http://h:1', '', f);
+  await st.importJson('{"version":1,"articles":[],"highlights":[]}');
+  assert.ok(f.calls[0].url.endsWith('/api/import'));
+  assert.deepEqual(JSON.parse(f.calls[0].init.body), { json: '{"version":1,"articles":[],"highlights":[]}' });
+  await st.exportJson();
+  assert.ok(f.calls[1].url.endsWith('/api/export?format=json'));
+});
+
+test('a corrupt stored card is clamped instead of crashing the review', () => {
+  const next = E.scheduleSm2Review({ repetitions: 'junk', interval: -5, ef: 'NaN', due: 'x', created: 'x' }, 4, '2026-10-25');
+  assert.equal(next.repetitions, 1);
+  assert.equal(next.interval, 1);
+  assert.ok(Number.isFinite(next.ef) && next.ef >= 1.3 && next.ef <= 5);
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(next.due));
+});
+
+test('the reader omits a link for a non-http article address', () => {
+  const bad = App.renderReader({ id: 'a', title: 't', url: 'javascript:alert(1)', body: 'b', savedAt: '2026-10-25', wordCount: 1, tags: [] }, []);
+  assert.ok(!/href=/.test(bad));
+  const good = App.renderReader({ id: 'a', title: 't', url: 'https://ok.test/', body: 'b', savedAt: '2026-10-25', wordCount: 1, tags: [] }, []);
+  assert.ok(/href="https:\/\/ok\.test\/"/.test(good));
+});
+
+// ---------------------------------------------------------------------------
+// Adversarial pass-2 regressions
+// ---------------------------------------------------------------------------
+
+test('a runaway interval clamps instead of overflowing the calendar', () => {
+  const out = E.scheduleSm2Review({ repetitions: 13, interval: 2038878, ef: 3.8 }, 5, '2026-11-21');
+  assert.equal(out.interval, 36500);
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(out.due));
+  const edge = E.scheduleSm2Review({ repetitions: 13, interval: 2038878, ef: 3.8 }, 5, '9999-12-30');
+  assert.equal(edge.due, '9999-12-31');
+  assert.equal(E.addDaysIso('9999-12-30', 36500), '9999-12-31');
+});
+
+test('a foreign article id imports fresh and never mislinks its highlight', async () => {
+  const st = App.LocalStore(createEnvironment().storage, () => '2026-10-25');
+  const existing = (await st.list())[0];
+  const backup = {
+    version: 1,
+    articles: [{ id: String(existing.id), title: 'Foreign page', url: 'https://foreign.test/p', savedAt: '2026-10-01', tags: [], body: 'x' }],
+    highlights: [{ id: 'fh1', articleId: String(existing.id), text: 'foreign highlight', due: '2026-10-20' }]
+  };
+  backup.sha256 = await E.sha256Hex(E.vaultDigestSource(backup));
+  const r = await st.importJson(JSON.stringify(backup));
+  assert.equal(r.articles, 1, 'a colliding foreign id must not be treated as a duplicate');
+  const all = await st.list();
+  const foreign = all.find((a) => a.url === 'https://foreign.test/p');
+  assert.ok(foreign && foreign.id !== existing.id, 'the foreign row gets a fresh id');
+  const hls = await st.highlights(foreign.id);
+  assert.equal(hls.length, 1);
+  assert.equal(hls[0].articleId, foreign.id, 'the highlight follows the new article id');
+  assert.equal((await st.highlights(existing.id)).filter((h) => h.text === 'foreign highlight').length, 0,
+    'nothing attaches to the unrelated local row');
+});
+
+test('a string ef reads as the 2.5 default, matching the Python twin', () => {
+  const out = E.scheduleSm2Review({ repetitions: 2, interval: 6, ef: '3.0' }, 5, '2026-11-21');
+  assert.equal(out.interval, 15);
+  assert.equal(E.scheduleSm2Review({ repetitions: 2, interval: 6, ef: 3.0 }, 5, '2026-11-21').interval, 18);
 });
