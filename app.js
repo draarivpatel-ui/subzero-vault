@@ -1,9 +1,9 @@
 /* SubZero Vault web app. Views are pure functions that return HTML strings (testable in Node),
  * the stores hide whether data lives in this browser or on your server, and createApp wires both to the page. */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'), require('./samples.js'));
-  else root.SubZeroApp = factory(root.SubZero, root.SubZeroSamples);
-}(typeof self !== 'undefined' ? self : this, function (E, Samples) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'), require('./samples.js'), require('./vault-lab.js'));
+  else root.SubZeroApp = factory(root.SubZero, root.SubZeroSamples, root.SubZeroLab);
+}(typeof self !== 'undefined' ? self : this, function (E, Samples, Lab) {
   'use strict';
 
   const esc = E.escapeHtml;
@@ -624,6 +624,7 @@
       due: [],
       studioTab: 'docker-compose.yml',
       studioFiles: [],
+      lab: Lab ? Lab.defaultLabState() : null,
       seq: 0,
       chartAnimated: false
     };
@@ -668,7 +669,10 @@
       urlTimer = win.setTimeout(function () {
         try {
           const token = E.encodeCalcState(state.calc);
-          win.history.replaceState(null, '', win.location.pathname + (token ? '?c=' + token : '') + (win.location.hash || ''));
+          let hash = win.location.hash || '';
+          /* Keep section anchors intact; only a #szv= bookmark gets rewritten. */
+          if (Lab && state.lab && hash.indexOf('#szv=') === 0) hash = '#szv=' + Lab.encodeLabHash(state.lab);
+          win.history.replaceState(null, '', win.location.pathname + (token ? '?c=' + token : '') + hash);
         } catch (e) { /* file:// pages may refuse; the link button still works */ }
       }, 250);
     }
@@ -706,6 +710,7 @@
     function onCalcChanged() {
       readCalcInputs();
       renderAudit();
+      renderLab();
       syncUrl();
     }
 
@@ -733,6 +738,7 @@
       }
       state.calc = E.normalizeCalc(state.calc);
       renderAudit();
+      renderLab();
       syncUrl();
     }
 
@@ -775,6 +781,147 @@
       const link = loc.origin + loc.pathname + (token ? '?c=' + token : '') + '#audit';
       try { await copyText(link); say('scenario-status', 'Link copied.'); }
       catch (e) { say('scenario-status', 'Copy was blocked. Copy the address bar instead.', true); }
+    }
+
+    // ----- lab -------------------------------------------------------------
+
+    const hasLab = !!(Lab && state.lab && byId('lab'));
+
+    function writeLabInputs() {
+      const s = state.lab;
+      byId('lab-horizon').value = String(s.horizon);
+      byId('lab-strategy').value = s.strategy;
+      byId('lab-k1').value = String(s.k1);
+      byId('lab-b').value = String(s.b);
+      byId('lab-query').value = s.query;
+    }
+
+    function drawLabChart(host, svg) {
+      const box = byId(host);
+      if (!box) return;
+      box.innerHTML = svg;
+    }
+
+    function labTcoReadout(rep) {
+      const h = rep.hardware.find(function (x) { return x.id === rep.profile; }) || rep.hardware[0];
+      if (!h) return '';
+      if (h.breakEvenDay === null) {
+        return h.name + ' never catches the ' + money(rep.inputs.saasAnnual) + ' a year rent inside five years. ' +
+          'Over ' + rep.horizon + ' months it costs ' + money(h.tco) + ' against ' + money(h.rent) + ' of rent.';
+      }
+      return h.name + ' pays for itself on day ' + h.breakEvenDay + '. Over ' + rep.horizon + ' months it has cost ' +
+        money(h.tco) + ' while the rent would have run ' + money(h.rent) + ', so ' + money(h.net) + ' stays in your pocket.';
+    }
+
+    function labSm2Readout(rep) {
+      const s = rep.sm2.strategies.find(function (x) { return x.id === rep.sm2.selected; });
+      if (!s) return '';
+      return s.name + ' runs ' + s.totalReviews + ' reviews over ' + rep.sm2.days + ' days, peaks at ' +
+        s.peakBacklog + ' cards waiting, and matures ' + s.matureAtEnd + ' of ' + rep.sm2.cards + '.';
+    }
+
+    function renderLab() {
+      if (!hasLab) return;
+      const s = state.lab;
+      byId('lab-tabs').innerHTML = Lab.renderLabTabs(s.view);
+      Lab.LAB_VIEWS.forEach(function (v) { byId('lab-view-' + v.id).hidden = s.view !== v.id; });
+      const bundle = Lab.auditBundle(s, state.calc);
+      const rep = bundle.payload;
+      byId('lab-tco-table').innerHTML = Lab.renderComparatorRows(rep, s.profile);
+      byId('lab-sens-table').innerHTML = Lab.renderSensitivityRows(rep, s.profile);
+      drawLabChart('lab-tco-chart', Lab.renderTcoChart(rep, { width: byId('lab-tco-chart').clientWidth || 640 }));
+      byId('lab-tco-readout').textContent = labTcoReadout(rep);
+      byId('lab-bm25-out').innerHTML = Lab.renderBm25Rows(rep.bm25);
+      byId('lab-stability').innerHTML = Lab.renderStabilityTiles(rep.bm25);
+      byId('lab-sm2-table').innerHTML = Lab.renderSm2Rows(rep.sm2, s.strategy);
+      drawLabChart('lab-sm2-chart', Lab.renderSm2Chart(rep.sm2, { width: byId('lab-sm2-chart').clientWidth || 640 }));
+      byId('lab-sm2-readout').textContent = labSm2Readout(rep);
+      byId('lab-digest').textContent = bundle.sha256;
+    }
+
+    function onLabInput() {
+      const s = state.lab;
+      const k1 = parseFloat(byId('lab-k1').value);
+      const bb = parseFloat(byId('lab-b').value);
+      if (isFinite(k1)) s.k1 = k1;
+      if (isFinite(bb)) s.b = bb;
+      s.horizon = parseInt(byId('lab-horizon').value, 10);
+      s.strategy = byId('lab-strategy').value;
+      s.query = byId('lab-query').value;
+      state.lab = Lab.normalizeLabState(s);
+      renderLab();
+      syncUrl();
+    }
+
+    function labBundle() { return Lab.auditBundle(state.lab, state.calc); }
+
+    async function onLabCopyLink() {
+      const token = E.encodeCalcState(state.calc);
+      const loc = win.location;
+      const link = loc.origin + loc.pathname + (token ? '?c=' + token : '') + '#szv=' + Lab.encodeLabHash(state.lab);
+      try { await copyText(link); say('lab-export-status', 'Share link copied. It restores this lab and this bill.'); }
+      catch (e) { say('lab-export-status', 'Copy was blocked. Copy the address bar instead.', true); }
+    }
+
+    function onLabVerify() {
+      const v = Lab.verifyReportJson(labBundle().json);
+      say('lab-export-status', v.ok
+        ? 'Checksum verifies. The JSON, the CSV header and the Markdown footer all agree.'
+        : 'The export failed its own checksum: ' + (v.error || 'digest mismatch') + '.', !v.ok);
+    }
+
+    function onLabTamper() {
+      const t = Lab.tamperReportJson(labBundle().json);
+      say('lab-export-status', t.verify.ok
+        ? 'Unexpected: the edited copy still verifies. Something is wrong.'
+        : 'Tamper caught. The edited copy fails the checksum, so the fake numbers cannot travel.', t.verify.ok);
+    }
+
+    function onLabRunTests() {
+      const list = Lab.labSelfTests();
+      const ok = list.filter(function (t) { return t.ok; }).length;
+      byId('lab-tests-out').innerHTML = Lab.renderSelfTestResults(list);
+      byId('lab-tests-count').textContent = ok + '/' + list.length + ' checks pass';
+      return list;
+    }
+
+    function initLab() {
+      if (!hasLab) return;
+      byId('lab').hidden = false;
+      const nav = byId('nav-lab');
+      if (nav) nav.hidden = false;
+      byId('lab-strategy').innerHTML = Lab.SM2_STRATEGIES.map(function (s) {
+        return '<option value="' + s.id + '">' + esc(s.name) + '</option>';
+      }).join('');
+      const hash = win && win.location ? win.location.hash || '' : '';
+      if (hash.indexOf('#szv=') === 0) {
+        const d = Lab.decodeLabHash(hash.slice(5));
+        state.lab = d.state;
+        if (!d.ok) say('lab-status', 'The share bookmark was malformed, so the lab opened at its defaults.', true);
+      }
+      writeLabInputs();
+      ['lab-horizon', 'lab-strategy'].forEach(function (id) { byId(id).addEventListener('change', onLabInput); });
+      ['lab-k1', 'lab-b', 'lab-query'].forEach(function (id) { byId(id).addEventListener('input', onLabInput); });
+      byId('lab-dl-json').addEventListener('click', function () { download('subzero-lab-report.json', labBundle().json, 'application/json'); say('lab-export-status', 'JSON report downloaded.'); });
+      byId('lab-dl-csv').addEventListener('click', function () { download('subzero-lab-report.csv', labBundle().csv, 'text/csv'); say('lab-export-status', 'CSV report downloaded. Formula-like cells are escaped.'); });
+      byId('lab-dl-md').addEventListener('click', function () { download('subzero-lab-report.md', labBundle().markdown, 'text/markdown'); say('lab-export-status', 'Markdown report downloaded.'); });
+      byId('lab-copy-link').addEventListener('click', function () { onLabCopyLink(); });
+      byId('lab-verify').addEventListener('click', onLabVerify);
+      byId('lab-tamper').addEventListener('click', onLabTamper);
+      byId('lab-run-tests').addEventListener('click', onLabRunTests);
+      if (win && win.addEventListener) {
+        win.addEventListener('hashchange', function () {
+          const h = win.location ? win.location.hash || '' : '';
+          if (h.indexOf('#szv=') === 0) {
+            const d = Lab.decodeLabHash(h.slice(5));
+            state.lab = d.state;
+            if (!d.ok) say('lab-status', 'The share bookmark was malformed, so the lab opened at its defaults.', true);
+            writeLabInputs();
+            renderLab();
+          }
+        });
+      }
+      renderLab();
     }
 
     // ----- vault -----------------------------------------------------------
@@ -1106,6 +1253,8 @@
         case 'show-answer': state.revealed = true; byId('review-card').innerHTML = renderReview(state.due, true, today()); break;
         case 'rate': onRate(parseInt(d.q, 10)); break;
         case 'tab': state.studioTab = d.id; renderStudio(); break;
+        case 'lab-view': if (hasLab) { state.lab.view = Lab.normalizeLabState({ view: d.id }).view; renderLab(); syncUrl(); } break;
+        case 'lab-profile': if (hasLab) { state.lab.profile = Lab.normalizeLabState({ profile: d.id }).profile; renderLab(); syncUrl(); } break;
         default: break;
       }
     }
@@ -1189,6 +1338,8 @@
       byId('st-gen-token').addEventListener('click', onGenToken);
       byId('st-tabs').addEventListener('keydown', onTabKey);
       renderStudio();
+
+      initLab();
 
       const boot = refreshVault(false);
       return boot.then(function () { return autoConnect(); });

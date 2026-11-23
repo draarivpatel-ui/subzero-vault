@@ -37,6 +37,8 @@ python3 server/app.py --port 8090
 
 **Rent audit.** Twelve subscriptions, each with a tick and an editable monthly price, set against a box you own, its wattage and your electricity rate. It shows rent per year, power per year, the saving, the day the box pays for itself and a 36 month chart of both lines. The scenario lives in the page address, so a link shares it.
 
+**TCO and retention lab.** Five ways to run the vault (Raspberry Pi 5 kit, used N100 mini PC, refurbished ThinkCentre, two bay NAS, or a `$6` a month VPS) priced against the same subscription bill at 12, 36 and 60 months, with break-even recomputed under plus or minus 30% power and plus or minus 20% rent shocks. A second panel stress-tests the internals: BM25 `k1` and `b` sliders show how much the sample ranking actually moves (Kendall tau and top-3 overlap), and an SM-2 simulator plots ninety days of review backlog for four grading strategies. Every lab report exports as JSON, CSV and Markdown carrying one SHA-256 checksum, and a `#szv=` bookmark restores the whole lab. Sixteen self-tests run inside the page.
+
 **Packaging studio.** Pick the port, volume folder, backup schedule and front door (nothing, Caddy with automatic HTTPS, or Tailscale). Get a matching `docker-compose.yml`, `.env` and `Caddyfile` to copy or download.
 
 | Screenshot | What it shows |
@@ -51,6 +53,8 @@ python3 server/app.py --port 8090
 The three headline subscriptions use example prices of `$9.99`, `$3.99` and `$6.00` a month, which add up to `$239.76` a year. These are starting figures, not quotes. NOTES.md records where each came from and where sources disagreed. Rocket Money in particular lets you choose a price. Edit any figure on the page and everything recomputes.
 
 With the default box (a `$120` Raspberry Pi 5 kit drawing 6 W at `$0.17` per kWh, which are estimates) the electricity costs `$8.94` a year, the net saving is `$230.82` a year, and the box pays for itself on day 190.
+
+The lab's five profiles carry their own starting estimates: `$120` at 6 W for the Pi kit, `$150` at 10 W for the N100 box, `$100` at 20 W for the ThinkCentre, `$210` at 15 W for the NAS, and `$6` a month for the VPS. They are example figures to edit against, not current quotes; disks and shipping are extra.
 
 Rocket Money's bank sync and bill negotiation are not replaced. The audit is a calculator you fill in by hand.
 
@@ -108,16 +112,17 @@ If you expose the server beyond your own machine, set a token and put it behind 
 ## Tests
 
 ```
-npm test                       # 186 engine and page tests, Node 18 or newer, no dependencies
-python3 server/app.py --selftest   # 229 checks, then a live server is started and every endpoint is called
+npm test                       # 384 engine, lab and page tests, Node 18 or newer, no dependencies
+python3 server/app.py --selftest   # 260 checks, then a live server is started and every endpoint is called
 ```
 
-The Node suite covers the maths (hand computed BM25 and SM-2 values), readability, bookmarks, the Compose generator, page markup rules (labels, live regions, meta tags, colour tokens) and the page controller against a small fake DOM. The Python self test replays `tests/fixtures/parity.json` so the two implementations stay in step.
+The Node suite covers the maths (hand computed BM25 and SM-2 values), readability, bookmarks, the Compose generator, page markup rules (labels, live regions, meta tags, colour tokens) and the page controller against a small fake DOM. The lab suite adds the SHA-256 vectors (checked against node:crypto), the five-box comparator, the Kendall tau and SM-2 simulators, the `#szv=` codec under malformed and hostile tokens, CSV formula escaping, checksum parity across the JSON, CSV and Markdown exports, and the tamper demo. The Python self test replays `tests/fixtures/parity.json` so the two implementations stay in step.
 
 ## Layout
 
 ```
 index.html styles.css app.js engine.js samples.js   the web app
+vault-lab.js                                        the TCO and retention lab
 server/app.py                                       the server
 Dockerfile docker-compose.yml .env.example          packaging
 tests/                                              node:test suites and fixtures

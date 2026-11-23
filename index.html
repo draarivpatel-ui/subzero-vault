@@ -42,6 +42,7 @@
     </a>
     <nav class="site-nav" id="site-nav" aria-label="Sections">
       <a href="#audit">Rent audit</a>
+      <a href="#lab" id="nav-lab" hidden>Lab</a>
       <a href="#vault">Vault</a>
       <a href="#packaging">Packaging</a>
       <a href="#modes">Two modes</a>
@@ -186,6 +187,139 @@ open http://localhost:8090</code></pre>
             </div>
           </div>
 
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band band-card" id="lab" aria-labelledby="lab-title" hidden>
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="lab-title">TCO and retention lab</h2>
+        <p>Five ways to run the vault priced against the same rent, plus a look under the bonnet of the search ranker and the review schedule. Every export carries a checksum, so a changed number cannot pass silently.</p>
+      </div>
+      <p class="status status-line" id="lab-status" role="status"></p>
+
+      <div class="tabs lab-tabs" id="lab-tabs" role="tablist" aria-label="Lab views"></div>
+
+      <div id="lab-view-tco" class="lab-view">
+        <div class="lab-grid">
+          <div class="panel">
+            <h3 class="panel-title">Five boxes, one bill</h3>
+            <div class="field-grid lab-controls">
+              <div class="field">
+                <label for="lab-horizon">Compare over</label>
+                <select id="lab-horizon">
+                  <option value="12">12 months</option>
+                  <option value="36" selected>36 months</option>
+                  <option value="60">60 months</option>
+                </select>
+              </div>
+            </div>
+            <p class="note">Subscriptions and the electricity rate come from the rent audit above. Pick a box name in the table to highlight it in the chart. Box costs, wattages and the VPS fee are starting estimates, not quotes.</p>
+            <div class="table-scroll">
+              <table class="sub-table lab-table">
+                <caption class="sr-only">Five hardware profiles compared against the subscription bill</caption>
+                <thead><tr><th scope="col">Box</th><th scope="col" class="num">Up front</th><th scope="col" class="num">Watts</th><th scope="col" class="num">kWh a year</th><th scope="col" class="num">Power a year</th><th scope="col" class="num">Fees a year</th><th scope="col" class="num">Break even</th><th scope="col" class="num">Cost so far</th><th scope="col" class="num">Rent so far</th><th scope="col" class="num">Saved so far</th></tr></thead>
+                <tbody id="lab-tco-table"></tbody>
+              </table>
+            </div>
+            <h3 class="panel-title">Break-even under price shocks</h3>
+            <div class="table-scroll">
+              <table class="sub-table lab-table">
+                <caption class="sr-only">Break-even day for each box if power or rent prices move</caption>
+                <thead><tr><th scope="col">Box</th><th scope="col" class="num">Power down 30%</th><th scope="col" class="num">Power up 30%</th><th scope="col" class="num">Rent down 20%</th><th scope="col" class="num">Rent up 20%</th></tr></thead>
+                <tbody id="lab-sens-table"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <h3 class="panel-title" id="lab-tco-chart-title">Sixty months of cumulative cost</h3>
+            <div class="chart-box" id="lab-tco-chart"></div>
+            <p class="readout" id="lab-tco-readout" aria-live="polite"></p>
+          </div>
+        </div>
+      </div>
+
+      <div id="lab-view-diag" class="lab-view" hidden>
+        <div class="lab-grid">
+          <div class="panel">
+            <h3 class="panel-title">BM25 parameter sensitivity</h3>
+            <div class="field-grid lab-controls">
+              <div class="field field-wide">
+                <label for="lab-query">Query to rank</label>
+                <input id="lab-query" type="text" value="sqlite backup" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="lab-k1">k1, term saturation</label>
+                <input id="lab-k1" type="number" min="0" max="4" step="0.1" value="1.5" inputmode="decimal">
+              </div>
+              <div class="field">
+                <label for="lab-b">b, length normalisation</label>
+                <input id="lab-b" type="number" min="0" max="1" step="0.05" value="0.75" inputmode="decimal">
+              </div>
+            </div>
+            <div class="tiles lab-stability" id="lab-stability"></div>
+            <div class="table-scroll">
+              <table class="sub-table lab-table">
+                <caption class="sr-only">Ranking of the eight sample articles at the chosen parameters</caption>
+                <thead><tr><th scope="col" class="num">Rank</th><th scope="col">Article</th><th scope="col" class="num">Score</th></tr></thead>
+                <tbody id="lab-bm25-out"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3 class="panel-title">Ninety days of review load</h3>
+            <div class="field lab-controls">
+              <label for="lab-strategy">Backlog detail for</label>
+              <select id="lab-strategy"></select>
+            </div>
+            <p class="note">Twenty four fresh cards land on day zero, a Monday. Each strategy grades the same cards the same way; only the review days and the grade differ.</p>
+            <div class="table-scroll">
+              <table class="sub-table lab-table">
+                <caption class="sr-only">Review totals per retention strategy over ninety days</caption>
+                <thead><tr><th scope="col">Strategy</th><th scope="col" class="num">Reviews</th><th scope="col" class="num">Peak backlog</th><th scope="col" class="num">Mature at 90d</th><th scope="col" class="num">Left due</th></tr></thead>
+                <tbody id="lab-sm2-table"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="chart-card lab-span">
+            <h3 class="panel-title" id="lab-sm2-chart-title">Review load over ninety days</h3>
+            <div class="chart-box" id="lab-sm2-chart"></div>
+            <p class="readout" id="lab-sm2-readout" aria-live="polite"></p>
+          </div>
+        </div>
+      </div>
+
+      <div id="lab-view-export" class="lab-view" hidden>
+        <div class="lab-grid">
+          <div class="panel">
+            <h3 class="panel-title">Audited export</h3>
+            <p>The JSON, CSV and Markdown files below all describe one canonical report and carry its SHA-256 checksum. Change any number in a copy and the verify step will catch it.</p>
+            <p class="lab-digest">SHA-256 <code class="mono" id="lab-digest">computing</code></p>
+            <div class="row-actions">
+              <button type="button" class="btn btn-quiet btn-small" id="lab-dl-json">Download JSON</button>
+              <button type="button" class="btn btn-quiet btn-small" id="lab-dl-csv">Download CSV</button>
+              <button type="button" class="btn btn-quiet btn-small" id="lab-dl-md">Download Markdown</button>
+              <button type="button" class="btn btn-quiet btn-small" id="lab-copy-link">Copy share link</button>
+              <button type="button" class="btn btn-quiet btn-small" id="lab-verify">Verify checksum</button>
+              <button type="button" class="btn btn-quiet btn-small" id="lab-tamper">Tamper demo</button>
+            </div>
+            <p class="status" id="lab-export-status" role="status"></p>
+          </div>
+
+          <div class="panel">
+            <h3 class="panel-title">Self-tests</h3>
+            <p>Sixteen checks run in this page against the same code that draws the numbers: checksum vectors, the comparator, the ranker, the review scheduler, the exporters and the share codec.</p>
+            <div class="row-actions">
+              <button type="button" class="btn btn-primary btn-small" id="lab-run-tests">Run the self-tests</button>
+              <span class="status" id="lab-tests-count" role="status"></span>
+            </div>
+            <ol class="lab-tests" id="lab-tests-out"></ol>
+          </div>
         </div>
       </div>
     </div>
@@ -422,6 +556,7 @@ docker compose up -d</code></pre>
 
 <script src="engine.js"></script>
 <script src="samples.js"></script>
+<script src="vault-lab.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

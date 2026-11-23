@@ -309,15 +309,16 @@
 
   function normalizeCalc(input) {
     const d = defaultCalcState();
-    const s = input || {};
+    const s = (input && typeof input === 'object') ? input : {};
+    const sp = (s.prices && typeof s.prices === 'object') ? s.prices : {};
     const prices = {};
     SUBSCRIPTION_CATALOG.forEach(function (c) {
-      const raw = s.prices && s.prices[c.id] !== undefined ? s.prices[c.id] : d.prices[c.id];
+      const raw = sp[c.id] !== undefined ? sp[c.id] : d.prices[c.id];
       prices[c.id] = raw === null || raw === '' ? null : Math.max(0, num(raw, 0));
     });
     const known = new Set(SUBSCRIPTION_CATALOG.map(function (c) { return c.id; }));
     return {
-      enabled: (s.enabled || d.enabled).filter(function (id) { return known.has(id); }),
+      enabled: (Array.isArray(s.enabled) ? s.enabled : d.enabled).filter(function (id) { return known.has(id); }),
       prices: prices,
       hardwareCost: Math.max(0, num(s.hardwareCost, d.hardwareCost)),
       watts: Math.max(0, num(s.watts, d.watts)),

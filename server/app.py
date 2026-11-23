@@ -289,15 +289,16 @@ def _clamp(v, lo, hi):
 
 
 def normalize_calc(inp):
-    s = inp or {}
+    s = inp if isinstance(inp, dict) else {}
     known = set(c[0] for c in CATALOG)
     prices = {}
-    sp = s.get("prices") or {}
+    sp = s.get("prices") if isinstance(s.get("prices"), dict) else {}
     for cid, default in CATALOG:
         raw = sp[cid] if cid in sp else default
         prices[cid] = None if raw is None or raw == "" else max(0.0, _num(raw, 0.0))
+    en = s.get("enabled")
     return {
-        "enabled": [i for i in (s.get("enabled") if s.get("enabled") is not None else DEFAULT_ENABLED) if i in known],
+        "enabled": [i for i in (en if isinstance(en, (list, tuple)) else DEFAULT_ENABLED) if i in known],
         "prices": prices,
         "hardwareCost": max(0.0, _num(s.get("hardwareCost"), 120.0)),
         "watts": max(0.0, _num(s.get("watts"), 6.0)),
