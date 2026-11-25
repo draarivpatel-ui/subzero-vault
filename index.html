@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DamCoPgB/VkDCPsu0R6X4sJsz1c66vGlUGBXLu04Yxg='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' http: https:; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http: https:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SubZero Vault | Self-hosted read-it-later, bookmarks and subscription audit</title>
 <meta name="description" content="Keep your articles, bookmarks and highlights on a machine you own. BM25 search, spaced-repetition review, bookmark import and export, and a calculator for the monthly bills it replaces. Runs in the browser or in Docker Compose.">
@@ -11,7 +11,7 @@
 <link rel="canonical" href="https://aariv.me/subzero-vault/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="SubZero Vault">
-<meta property="og:title" content="SubZero Vault. Stop renting your reading list.">
+<meta property="og:title" content="SubZero Vault. Own your reading list.">
 <meta property="og:description" content="Self-hosted read-it-later, bookmarks, highlight review and a subscription audit. One docker compose up, or try it in your browser.">
 <meta property="og:url" content="https://aariv.me/subzero-vault/">
 <meta property="og:image" content="https://aariv.me/subzero-vault/img/og.png">
@@ -19,13 +19,12 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="The SubZero Vault title over a rent ledger totalling 239 dollars 76 cents a year at the example prices.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="SubZero Vault. Stop renting your reading list.">
+<meta name="twitter:title" content="SubZero Vault. Own your reading list.">
 <meta name="twitter:description" content="Self-hosted read-it-later, bookmarks, highlight review and a subscription audit.">
 <meta name="twitter:image" content="https://aariv.me/subzero-vault/img/og.png">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23141413'/%3E%3Cpath d='M9 11h14M9 16h14M9 21h8' stroke='%23F6F3EC' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='21' r='3' fill='%23C84B31'/%3E%3C/svg%3E">
 <link rel="preload" href="fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
-<script>document.documentElement.className += ' js';</script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -40,42 +39,41 @@
       </svg>
       <span>SubZero Vault</span>
     </a>
+    <button type="button" class="pill" id="storage-pill" aria-controls="server-drawer" aria-expanded="false">
+      <span class="pill-dot" aria-hidden="true"></span>
+      <span class="sr-only">Vault storage: </span>
+      <span id="storage-label">This browser</span>
+    </button>
     <nav class="site-nav" id="site-nav" aria-label="Sections">
       <a href="#audit">Rent audit</a>
       <a href="#lab" id="nav-lab" hidden>Lab</a>
       <a href="#vault">Vault</a>
-      <a href="#packaging">Packaging</a>
-      <a href="#modes">Two modes</a>
+      <a href="#packaging">Package</a>
+      <a href="#modes">Modes</a>
     </nav>
-    <button type="button" class="pill" id="storage-pill" aria-describedby="vault-status">
-      <span class="pill-dot" aria-hidden="true"></span>
-      <span id="storage-label">Storage: this browser</span>
-    </button>
   </div>
 </header>
 
-<main id="main">
+<main id="main" tabindex="-1">
   <div id="top"></div>
 
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap hero-grid">
       <div class="hero-copy">
-        <h1 id="hero-title">Stop renting your reading list.</h1>
-        <p class="lede">SubZero Vault keeps your articles, bookmarks and highlights on a machine you own. It ranks searches the way a search engine does, brings highlights back on a schedule, and shows what your monthly bills add up to.</p>
+        <h1 id="hero-title">Own your reading list.</h1>
         <div class="cta-row">
           <a class="btn btn-primary" href="#vault">Open the vault</a>
           <a class="btn btn-quiet" href="#packaging">Get the Compose file</a>
         </div>
-        <p class="fine">Prices on this page are editable examples. Your own bill is the one that counts.</p>
       </div>
 
       <figure class="ledger" aria-labelledby="ledger-caption">
         <div class="ledger-total">
           <span class="ledger-num" id="ledger-total">$239.76</span>
-          <span class="ledger-unit" id="ledger-caption">a year in rent at the example prices</span>
+          <span class="ledger-unit" id="ledger-caption">in subscriptions per year</span>
         </div>
         <table class="ledger-table">
-          <caption class="sr-only">The three example subscriptions that make up the total</caption>
+          <caption class="sr-only">Monthly prices for the subscriptions in this scenario</caption>
           <thead><tr><th scope="col">Subscription</th><th scope="col" class="num">Per month</th></tr></thead>
           <tbody id="ledger-rows">
             <tr><th scope="row">Readwise Reader</th><td class="num">$9.99</td></tr>
@@ -98,7 +96,6 @@
     <div class="wrap split">
       <div>
         <h2 id="quick-title">Four commands to your own copy</h2>
-        <p>Clone it, start it, open it. The server needs nothing but Docker. Data lands in a folder next to the Compose file and backups run on a schedule you can change.</p>
       </div>
       <div class="code-wrap">
         <pre class="code" id="qs-code" tabindex="0" aria-label="Quickstart commands"><code>git clone https://github.com/draarivpatel-ui/subzero-vault
@@ -117,7 +114,6 @@ open http://localhost:8090</code></pre>
     <div class="wrap">
       <div class="section-head">
         <h2 id="audit-title">Add up the rent, then price the box</h2>
-        <p>Tick what you pay for, type what your bill says, and describe the machine. The chart shows the day owning overtakes renting.</p>
       </div>
 
       <div class="audit-grid">
@@ -131,6 +127,8 @@ open http://localhost:8090</code></pre>
               <tbody id="audit-subs"></tbody>
             </table>
           </div>
+          <p class="status audit-input-status" id="prices-status" role="status"></p>
+          <p class="note">The prices are examples. Tick the services you pay for and enter your monthly bills.</p>
           <p class="note" id="pocket-note">Pocket Premium is not listed. Mozilla shut Pocket down on 8 July 2025.</p>
         </div>
 
@@ -143,19 +141,19 @@ open http://localhost:8090</code></pre>
             </div>
             <div class="field">
               <label for="hw-cost">Box cost, one time ($)</label>
-              <input id="hw-cost" type="number" inputmode="decimal" min="0" step="1" value="120">
+              <input id="hw-cost" type="number" inputmode="decimal" min="0" max="1000000000" step="0.01" value="120">
             </div>
             <div class="field">
               <label for="hw-watts">Average draw (watts)</label>
-              <input id="hw-watts" type="number" inputmode="decimal" min="0" step="0.5" value="6">
+              <input id="hw-watts" type="number" inputmode="decimal" min="0" max="1000000" step="0.01" value="6">
             </div>
             <div class="field">
               <label for="hw-kwh">Electricity ($ per kWh)</label>
-              <input id="hw-kwh" type="number" inputmode="decimal" min="0" step="0.01" value="0.17">
+              <input id="hw-kwh" type="number" inputmode="decimal" min="0" max="1000" step="0.001" value="0.17">
             </div>
             <div class="field">
               <label for="hw-extra">Domain and extras ($ a year)</label>
-              <input id="hw-extra" type="number" inputmode="decimal" min="0" step="1" value="0">
+              <input id="hw-extra" type="number" inputmode="decimal" min="0" max="1000000000" step="0.01" value="0">
             </div>
             <div class="field">
               <label for="grow-saas">Yearly price rise (%)</label>
@@ -166,6 +164,7 @@ open http://localhost:8090</code></pre>
               <input id="grow-invest" type="number" inputmode="decimal" min="0" max="100" step="1" value="0">
             </div>
           </div>
+          <p class="status audit-input-status" id="hardware-status" role="status"></p>
           <p class="note">The box costs and wattages are starting estimates, not quotes. Replace them with what you actually own or pay.</p>
         </div>
         </div>
@@ -174,17 +173,18 @@ open http://localhost:8090</code></pre>
           <div class="tiles" id="audit-results" aria-live="polite"></div>
 
           <div class="chart-card">
-            <h3 class="panel-title" id="chart-title">Cumulative cost over the next few years</h3>
+            <h3 class="panel-title" id="chart-title">Cumulative cost</h3>
             <div class="chart-box" id="audit-chart"></div>
             <div class="scrub">
               <label for="chart-month">Look at month</label>
-              <input id="chart-month" type="range" min="0" max="60" step="1" value="12">
+              <input id="chart-month" type="range" min="0" max="36" step="1" value="12">
             </div>
             <p class="readout" id="chart-readout" aria-live="polite"></p>
             <div class="row-actions">
               <button type="button" class="btn btn-quiet btn-small" id="copy-scenario">Copy a link to this scenario</button>
               <span class="status" id="scenario-status" role="status"></span>
             </div>
+            <input class="share-url mono" id="scenario-link" type="url" aria-label="Scenario link" readonly hidden>
           </div>
 
         </div>
@@ -196,15 +196,14 @@ open http://localhost:8090</code></pre>
     <div class="wrap">
       <div class="section-head">
         <h2 id="lab-title">TCO and retention lab</h2>
-        <p>Five ways to run the vault priced against the same rent, plus a look under the bonnet of the search ranker and the review schedule. Every export carries a checksum, so a changed number cannot pass silently.</p>
       </div>
-      <p class="status status-line" id="lab-status" role="status"></p>
+      <p class="status status-line" id="lab-status" role="status" hidden></p>
 
       <div class="tabs lab-tabs" id="lab-tabs" role="tablist" aria-label="Lab views"></div>
 
-      <div id="lab-view-tco" class="lab-view">
+      <div id="lab-view-tco" class="lab-view" role="tabpanel" aria-labelledby="lab-tab-tco" tabindex="0">
         <div class="lab-grid">
-          <div class="panel">
+          <div class="panel lab-span">
             <h3 class="panel-title">Five boxes, one bill</h3>
             <div class="field-grid lab-controls">
               <div class="field">
@@ -216,20 +215,13 @@ open http://localhost:8090</code></pre>
                 </select>
               </div>
             </div>
-            <p class="note">Subscriptions and the electricity rate come from the rent audit above. Pick a box name in the table to highlight it in the chart. Box costs, wattages and the VPS fee are starting estimates, not quotes.</p>
-            <div class="table-scroll">
+            <p class="note lab-table-note">Pick a box to highlight it in the chart. Box costs are estimates; rent and electricity come from the audit.</p>
+            <p class="note table-scroll-hint">Scroll across to see the rest of the comparison.</p>
+            <div class="table-scroll lab-comparison" role="region" aria-label="Hardware costs. Scroll horizontally to see all columns." tabindex="0">
               <table class="sub-table lab-table">
                 <caption class="sr-only">Five hardware profiles compared against the subscription bill</caption>
-                <thead><tr><th scope="col">Box</th><th scope="col" class="num">Up front</th><th scope="col" class="num">Watts</th><th scope="col" class="num">kWh a year</th><th scope="col" class="num">Power a year</th><th scope="col" class="num">Fees a year</th><th scope="col" class="num">Break even</th><th scope="col" class="num">Cost so far</th><th scope="col" class="num">Rent so far</th><th scope="col" class="num">Saved so far</th></tr></thead>
+                <thead><tr><th scope="col">Box</th><th scope="col" class="num">Up front</th><th scope="col" class="num">Watts</th><th scope="col" class="num">kWh per year</th><th scope="col" class="num">Power per year</th><th scope="col" class="num">Fees per year</th><th scope="col" class="num">Break-even</th><th scope="col" class="num">Total cost</th><th scope="col" class="num">Total rent</th><th scope="col" class="num">Net savings</th></tr></thead>
                 <tbody id="lab-tco-table"></tbody>
-              </table>
-            </div>
-            <h3 class="panel-title">Break-even under price shocks</h3>
-            <div class="table-scroll">
-              <table class="sub-table lab-table">
-                <caption class="sr-only">Break-even day for each box if power or rent prices move</caption>
-                <thead><tr><th scope="col">Box</th><th scope="col" class="num">Power down 30%</th><th scope="col" class="num">Power up 30%</th><th scope="col" class="num">Rent down 20%</th><th scope="col" class="num">Rent up 20%</th></tr></thead>
-                <tbody id="lab-sens-table"></tbody>
               </table>
             </div>
           </div>
@@ -239,17 +231,29 @@ open http://localhost:8090</code></pre>
             <div class="chart-box" id="lab-tco-chart"></div>
             <p class="readout" id="lab-tco-readout" aria-live="polite"></p>
           </div>
+
+          <div class="panel">
+            <h3 class="panel-title">Break-even under price shocks</h3>
+            <div class="table-scroll" role="region" aria-label="Break-even estimates under price shocks" tabindex="0">
+              <table class="sub-table lab-table">
+                <caption class="sr-only">Break-even day for each box if power or rent prices move</caption>
+                <thead><tr><th scope="col">Box</th><th scope="col" class="num">Power down 30%</th><th scope="col" class="num">Power up 30%</th><th scope="col" class="num">Rent down 20%</th><th scope="col" class="num">Rent up 20%</th></tr></thead>
+                <tbody id="lab-sens-table"></tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
       </div>
 
-      <div id="lab-view-diag" class="lab-view" hidden>
+      <div id="lab-view-diag" class="lab-view" role="tabpanel" aria-labelledby="lab-tab-diag" tabindex="0" hidden>
         <div class="lab-grid">
           <div class="panel">
             <h3 class="panel-title">BM25 parameter sensitivity</h3>
             <div class="field-grid lab-controls">
               <div class="field field-wide">
                 <label for="lab-query">Query to rank</label>
-                <input id="lab-query" type="text" value="sqlite backup" autocomplete="off" spellcheck="false">
+                <input id="lab-query" type="text" value="sqlite backup" maxlength="120" autocomplete="off" spellcheck="false">
               </div>
               <div class="field">
                 <label for="lab-k1">k1, term saturation</label>
@@ -261,7 +265,7 @@ open http://localhost:8090</code></pre>
               </div>
             </div>
             <div class="tiles lab-stability" id="lab-stability"></div>
-            <div class="table-scroll">
+            <div class="table-scroll" role="region" aria-label="Ranked sample articles" tabindex="0">
               <table class="sub-table lab-table">
                 <caption class="sr-only">Ranking of the eight sample articles at the chosen parameters</caption>
                 <thead><tr><th scope="col" class="num">Rank</th><th scope="col">Article</th><th scope="col" class="num">Score</th></tr></thead>
@@ -277,7 +281,7 @@ open http://localhost:8090</code></pre>
               <select id="lab-strategy"></select>
             </div>
             <p class="note">Twenty four fresh cards land on day zero, a Monday. Each strategy grades the same cards the same way; only the review days and the grade differ.</p>
-            <div class="table-scroll">
+            <div class="table-scroll" role="region" aria-label="Review totals by strategy" tabindex="0">
               <table class="sub-table lab-table">
                 <caption class="sr-only">Review totals per retention strategy over ninety days</caption>
                 <thead><tr><th scope="col">Strategy</th><th scope="col" class="num">Reviews</th><th scope="col" class="num">Peak backlog</th><th scope="col" class="num">Mature at 90d</th><th scope="col" class="num">Left due</th></tr></thead>
@@ -294,12 +298,11 @@ open http://localhost:8090</code></pre>
         </div>
       </div>
 
-      <div id="lab-view-export" class="lab-view" hidden>
+      <div id="lab-view-export" class="lab-view" role="tabpanel" aria-labelledby="lab-tab-export" tabindex="0" hidden>
         <div class="lab-grid">
           <div class="panel">
             <h3 class="panel-title">Audited export</h3>
-            <p>The JSON, CSV and Markdown files below all describe one canonical report and carry its SHA-256 checksum. Change any number in a copy and the verify step will catch it.</p>
-            <p class="lab-digest">SHA-256 <code class="mono" id="lab-digest">computing</code></p>
+            <p class="lab-digest">Report checksum <code class="mono" id="lab-digest">computing</code></p>
             <div class="row-actions">
               <button type="button" class="btn btn-quiet btn-small" id="lab-dl-json">Download JSON</button>
               <button type="button" class="btn btn-quiet btn-small" id="lab-dl-csv">Download CSV</button>
@@ -308,12 +311,13 @@ open http://localhost:8090</code></pre>
               <button type="button" class="btn btn-quiet btn-small" id="lab-verify">Verify checksum</button>
               <button type="button" class="btn btn-quiet btn-small" id="lab-tamper">Tamper demo</button>
             </div>
+            <p class="note">Downloads carry the same SHA-256 checksum. Share links include prices and settings, but leave out your search text.</p>
             <p class="status" id="lab-export-status" role="status"></p>
+            <input class="share-url mono" id="lab-share-link" type="url" aria-label="Lab share link" readonly hidden>
           </div>
 
           <div class="panel">
             <h3 class="panel-title">Self-tests</h3>
-            <p>Sixteen checks run in this page against the same code that draws the numbers: checksum vectors, the comparator, the ranker, the review scheduler, the exporters and the share codec.</p>
             <div class="row-actions">
               <button type="button" class="btn btn-primary btn-small" id="lab-run-tests">Run the self-tests</button>
               <span class="status" id="lab-tests-count" role="status"></span>
@@ -329,7 +333,6 @@ open http://localhost:8090</code></pre>
     <div class="wrap">
       <div class="section-head">
         <h2 id="vault-title">Search, highlight, remember</h2>
-        <p>In the browser version eight sample articles are loaded so every feature has something to work on. Nothing leaves this browser unless you connect your own server.</p>
       </div>
 
       <div class="vault-bar">
@@ -348,16 +351,23 @@ open http://localhost:8090</code></pre>
 
       <div class="vault-grid">
         <div class="panel panel-list">
-          <h3 class="panel-title">Results</h3>
+          <h3 class="panel-title" id="results-title" tabindex="-1">Results</h3>
           <ol class="result-list" id="results"></ol>
         </div>
 
         <article class="panel panel-reader" aria-label="Reader">
           <div id="reader"><p class="empty">Pick an article to read it here.</p></div>
           <div class="hl-tools">
-            <label for="hl-note" class="sr-only">Note for the highlight</label>
-            <input id="hl-note" type="text" maxlength="200" placeholder="Optional note for the highlight">
-            <button type="button" class="btn btn-primary btn-small" id="hl-save">Highlight selected text</button>
+            <div class="field">
+              <label for="hl-text">Passage to highlight</label>
+              <textarea id="hl-text" rows="2" maxlength="4000" placeholder="Select text in the reader or paste it here" disabled></textarea>
+            </div>
+            <div class="field">
+              <label for="hl-note">Review cue (optional)</label>
+              <input id="hl-note" type="text" maxlength="200" disabled>
+            </div>
+            <button type="button" class="btn btn-primary btn-small" id="hl-save" disabled>Save highlight</button>
+            <p class="status" id="hl-status" role="status"></p>
           </div>
           <h3 class="panel-title">Highlights in this article</h3>
           <ul class="hl-list" id="highlights"></ul>
@@ -366,6 +376,7 @@ open http://localhost:8090</code></pre>
         <aside class="panel panel-review" aria-labelledby="review-title">
           <h3 class="panel-title" id="review-title">Review <span class="count" id="review-count">0 due</span></h3>
           <div id="review-card"></div>
+          <p class="status" id="review-status" role="status"></p>
         </aside>
       </div>
 
@@ -424,7 +435,7 @@ open http://localhost:8090</code></pre>
           </div>
         </details>
 
-        <details class="drawer">
+        <details class="drawer" id="server-drawer">
           <summary>Connect your server</summary>
           <form id="srv-form" novalidate>
           <div class="form-grid">
@@ -456,7 +467,6 @@ open http://localhost:8090</code></pre>
     <div class="wrap">
       <div class="section-head">
         <h2 id="pack-title">Package it so it runs</h2>
-        <p>Pick the port, the storage and the front door. Copy the files, run one command.</p>
       </div>
 
       <div class="studio-grid">
@@ -468,7 +478,7 @@ open http://localhost:8090</code></pre>
               <input id="st-port" type="number" min="1" max="65535" value="8090" inputmode="numeric">
             </div>
             <div class="field">
-              <label for="st-data">SQLite folder (volume path)</label>
+              <label for="st-data">SQLite folder</label>
               <input id="st-data" class="mono" type="text" value="./data" spellcheck="false">
             </div>
             <div class="field">
@@ -486,7 +496,7 @@ open http://localhost:8090</code></pre>
               <label class="choice-item"><input type="radio" name="proxy" value="caddy"> <span>Caddy with automatic HTTPS</span></label>
               <label class="choice-item"><input type="radio" name="proxy" value="tailscale"> <span>Tailscale, no open ports</span></label>
             </fieldset>
-            <div class="field" id="st-domain-field">
+            <div class="field" id="st-domain-field" hidden>
               <label for="st-domain">Domain for Caddy</label>
               <input id="st-domain" class="mono" type="text" value="vault.example.com" spellcheck="false">
             </div>
@@ -506,13 +516,15 @@ open http://localhost:8090</code></pre>
 
         <div class="panel panel-files">
           <div class="tabs" id="st-tabs" role="tablist" aria-label="Generated files"></div>
-          <pre class="code code-file" tabindex="0" aria-label="Generated file contents"><code id="st-out"></code></pre>
-          <div class="row-actions">
-            <button type="button" class="btn btn-primary btn-small" id="st-copy">Copy</button>
-            <button type="button" class="btn btn-quiet btn-small" id="st-download">Download</button>
-            <span class="status" id="st-status" role="status"></span>
+          <div id="st-file" role="tabpanel">
+            <pre class="code code-file" tabindex="0" aria-label="Generated file contents"><code id="st-out"></code></pre>
+            <div class="row-actions">
+              <button type="button" class="btn btn-primary btn-small" id="st-copy">Copy</button>
+              <button type="button" class="btn btn-quiet btn-small" id="st-download">Download</button>
+              <span class="status" id="st-status" role="status"></span>
+            </div>
           </div>
-          <pre class="code code-small" id="st-cmds" aria-label="Commands to run"><code>mkdir subzero-vault &amp;&amp; cd subzero-vault
+          <pre class="code code-small" id="st-cmds" aria-label="Commands to run" tabindex="0"><code>mkdir subzero-vault &amp;&amp; cd subzero-vault
 # save the files above into this folder, then
 docker compose up -d</code></pre>
         </div>
@@ -528,8 +540,7 @@ docker compose up -d</code></pre>
       <div class="modes-grid">
         <div class="mode">
           <h3>In this browser</h3>
-          <p>Everything on this page runs here. Articles, highlights and review dates sit in this browser's local storage, so clearing site data clears the vault. Export your bookmarks or JSON whenever you like.</p>
-          <p>The search, the review scheduler, the importer and the calculator are the same code the server uses.</p>
+          <p>Start with eight sample articles. Saved articles, highlights and review dates stay in this browser. Clearing site data clears your vault, so download a JSON backup to keep a copy.</p>
         </div>
         <div class="mode">
           <h3>On a server you own</h3>

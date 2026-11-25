@@ -7,13 +7,13 @@ services:
     image: subzero-vault:local
     restart: unless-stopped
     ports:
-      - "${VAULT_PORT:-8090}:8090"
+      - "127.0.0.1:${VAULT_PORT:-8090}:8090"
     environment:
       VAULT_DB: /data/vault.db
       VAULT_TOKEN: ${VAULT_TOKEN:-}
       VAULT_ALLOWED_ORIGINS: ${VAULT_ALLOWED_ORIGINS:-https://aariv.me}
       VAULT_BACKUP_DIR: /backups
-      VAULT_BACKUP_CRON: ${VAULT_BACKUP_CRON:-0 3 * * *}
+      VAULT_BACKUP_CRON: ${VAULT_BACKUP_CRON-0 3 * * *}
       TZ: ${TZ:-UTC}
     volumes:
       - ./data:/data

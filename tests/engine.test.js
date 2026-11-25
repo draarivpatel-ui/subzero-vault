@@ -364,6 +364,14 @@ test('a box that costs more to run than the rent never breaks even', () => {
   assert.ok(r.netAnnual < 0);
 });
 
+test('oversized but finite calculator entries cannot overflow the projections', () => {
+  const r = E.computeSubscriptionSavings({ enabled: ['readwise'], prices: { readwise: 1e308 }, hardwareCost: 1e308, watts: 1e308, kwhPrice: 1e308 });
+  assert.equal(r.saasAnnual, 12000000);
+  assert.equal(r.hardwareCost, 1000000000);
+  assert.equal(r.powerAnnual, 8760000000);
+  assert.ok(r.series.own.every(Number.isFinite));
+});
+
 test('chart series run month 0 through month 36 for three years', () => {
   const s = E.defaultCalcState();
   s.years = 3;
@@ -701,6 +709,12 @@ test('generateDockerCompose honours port and volume path', () => {
   assert.ok(g.compose.includes('${VAULT_PORT:-9000}:8090'));
   assert.ok(g.compose.includes('/srv/vault:/data'));
   assert.ok(g.env.includes('VAULT_PORT=9000'));
+});
+
+test('generateDockerCompose treats simple folder names as bind mounts, including spaces', () => {
+  const g = E.generateDockerCompose({ dataPath: 'vault data', backupPath: 'nightly', backupCron: '0 3 * * *' });
+  assert.match(g.compose, /- "\.\/vault data:\/data"/);
+  assert.match(g.compose, /- "\.\/nightly:\/backups"/);
 });
 
 test('generateDockerCompose rejects unsafe paths and ports', () => {

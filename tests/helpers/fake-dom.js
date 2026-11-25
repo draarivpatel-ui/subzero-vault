@@ -52,8 +52,9 @@ function createEnvironment(opts) {
   els['st-backup-path'].value = './backups'; els['st-domain'].value = 'vault.example.com'; els['st-tz'].value = 'UTC';
   els['srv-url'].value = 'http://localhost:8090';
   els['hw-preset'].value = 'custom';
-  els['srv-url'].closest = (sel) => (sel === 'details' ? els['srv-url']._details : null);
-  els['srv-url']._details = { open: false };
+  const articleBody = makeEl('article-body');
+  articleBody.contains = (node) => node === articleBody;
+  els.reader.querySelector = (sel) => (sel === '.reader-body' ? articleBody : null);
 
   const radios = ['none', 'caddy', 'tailscale'].map((v) => Object.assign(makeEl('radio-' + v, 'input'), { value: v, checked: v === 'none' }));
   const docListeners = {};
@@ -79,6 +80,7 @@ function createEnvironment(opts) {
     _selection: null,
     crypto: { getRandomValues: (a) => { for (let i = 0; i < a.length; i++) a[i] = (i * 37 + 11) % 256; return a; } },
     btoa: (s) => Buffer.from(s, 'binary').toString('base64'),
+    confirm: () => true,
     Blob: function (parts, opt) { this.parts = parts; this.type = opt && opt.type; },
     URL: { createObjectURL: (b) => { downloads.push(b); return 'blob:x'; }, revokeObjectURL: () => {} },
     addEventListener: () => {}
@@ -92,7 +94,15 @@ function createEnvironment(opts) {
       const target = { dataset: dataset, closest: () => ({ dataset: dataset }) };
       (docListeners.click || []).forEach((fn) => fn({ target: target }));
     },
-    selectText: (text) => { win._selection = { toString: () => text, anchorNode: {}, removeAllRanges: () => { win._selection = null; } }; }
+    selectText: (text, outside) => {
+      win._selection = {
+        toString: () => text,
+        rangeCount: 1,
+        getRangeAt: () => ({ startContainer: articleBody, endContainer: outside ? doc.body : articleBody }),
+        removeAllRanges: () => { win._selection = null; }
+      };
+      (docListeners.selectionchange || []).forEach((fn) => fn());
+    }
   };
 }
 

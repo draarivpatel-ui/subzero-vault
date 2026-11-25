@@ -46,7 +46,7 @@
         '<td><input type="checkbox" id="sub-chk-' + s.id + '" data-kind="chk" data-id="' + s.id + '" aria-labelledby="sub-name-' + s.id + '"' + (on.has(s.id) ? ' checked' : '') + '></td>' +
         '<td><span class="sub-name"><span id="sub-name-' + s.id + '">' + esc(s.name) + '</span>' +
         '<span class="sub-basis">' + esc(s.basis) + '</span></span></td>' +
-        '<td class="num"><input type="number" id="sub-price-' + s.id + '" data-kind="price" data-id="' + s.id + '" min="0" step="0.01" inputmode="decimal"' +
+        '<td class="num"><input type="number" id="sub-price-' + s.id + '" data-kind="price" data-id="' + s.id + '" min="0" max="1000000" step="0.01" inputmode="decimal"' +
         ' aria-label="Monthly price for ' + esc(s.name) + ' in dollars" placeholder="enter"' + (price === null ? '' : ' value="' + Number(price).toFixed(2) + '"') + '></td></tr>';
     }).join('');
   }
@@ -66,9 +66,12 @@
   }
 
   function ledgerFoot(result, calc) {
-    if (result.breakEvenDay === 0) return 'The box costs nothing up front, so every dollar of this rent is saved from day one.';
-    if (result.breakEvenDay === null) return 'At ' + calc.watts + ' W the box costs more to run than this rent, so it never pays for itself.';
-    return money0(result.hardwareCost) + ' of hardware drawing ' + calc.watts + ' W pays for itself by day ' + result.breakEvenDay + ' in this scenario.';
+    if (result.breakEvenDay === 0) {
+      return 'No up-front cost. ' + (result.netAnnual > 0 ? 'Owning saves ' + money(result.netAnnual) + ' in the first year.'
+        : result.netAnnual < 0 ? 'Owning costs ' + money(-result.netAnnual) + ' more in the first year.' : 'The first-year costs are equal.');
+    }
+    if (result.breakEvenDay === null) return 'The box never pays for itself at the starting rates.';
+    return money0(result.hardwareCost) + ' of hardware drawing ' + calc.watts + ' W breaks even by day ' + result.breakEvenDay + ' at the starting rates.';
   }
 
   function renderResults(result, calc) {
@@ -77,8 +80,8 @@
     const tiles = [
       { cls: '', value: money(result.saasAnnual), label: 'Rent each year' },
       { cls: '', value: money(result.ownAnnual), label: 'Power and extras each year (' + result.powerKwhYear + ' kWh)' },
-      { cls: result.netAnnual >= 0 ? 'is-good' : 'is-bad', value: money(result.netAnnual), label: 'Saved each year' },
-      { cls: never ? 'is-bad' : 'is-good', value: never ? 'never' : 'day ' + result.breakEvenDay, label: 'Break-even for the box' },
+      { cls: result.netAnnual >= 0 ? 'is-good' : 'is-bad', value: money(result.netAnnual), label: 'First-year savings before hardware' },
+      { cls: never ? 'is-bad' : '', value: never ? 'never' : 'day ' + result.breakEvenDay, label: 'Break-even at starting rates' },
       { cls: total >= 0 ? 'is-good' : 'is-bad', value: money(total), label: result.years + '-year saving after the box' + (calc.reinvest > 0 ? ', savings invested' : '') }
     ];
     return tiles.map(function (t) {
@@ -117,7 +120,7 @@
     let yLabels = '';
     for (let g = 0; g <= 4; g++) {
       const v = maxV * g / 4;
-      yLabels += '<text x="' + (m.l - 8) + '" y="' + (py(v) + 4).toFixed(1) + '" text-anchor="end">' + money0(v) + '</text>';
+      yLabels += '<text x="' + (m.l - 8) + '" y="' + (py(v) + 4).toFixed(1) + '" text-anchor="end">' + E.axisDollars(v) + '</text>';
     }
     const step = months > 36 ? 12 : 6;
     let xLabels = '';
@@ -129,9 +132,13 @@
     const lastS = result.series.saas[months];
     const lastO = result.series.own[months];
     const upTo = function (series) { return series.slice(0, months + 1); };
+    let rentY = py(lastS) - 8, ownY = py(lastO) - 8;
+    if (Math.abs(rentY - ownY) < 16) {
+      if (rentY <= ownY) ownY = rentY + 16; else rentY = ownY + 16;
+    }
     const labels =
-      '<text class="chart-label chart-label-saas" x="' + (W - m.r) + '" y="' + (py(lastS) - 8).toFixed(1) + '" text-anchor="end">Cloud rent ' + money0(lastS) + '</text>' +
-      '<text class="chart-label chart-label-own" x="' + (W - m.r) + '" y="' + (py(lastO) - 8).toFixed(1) + '" text-anchor="end">Your box ' + money0(lastO) + '</text>';
+      '<text class="chart-label chart-label-saas" x="' + (W - m.r) + '" y="' + rentY.toFixed(1) + '" text-anchor="end">Cloud rent ' + E.axisDollars(lastS) + '</text>' +
+      '<text class="chart-label chart-label-own" x="' + (W - m.r) + '" y="' + ownY.toFixed(1) + '" text-anchor="end">Your box ' + E.axisDollars(lastO) + '</text>';
 
     let cross = '';
     let crossDesc = 'The lines never cross in this window.';
@@ -193,7 +200,7 @@
   function renderTagChips(tags, active) {
     const all = '<button type="button" class="chip" data-action="tag" data-value="" aria-pressed="' + (active ? 'false' : 'true') + '">All</button>';
     return all + tags.map(function (t) {
-      return '<button type="button" class="chip" data-action="tag" data-value="' + esc(t.tag) + '" aria-pressed="' + (active === t.tag ? 'true' : 'false') + '">' + esc(t.tag) + ' ' + t.count + '</button>';
+      return '<button type="button" class="chip" data-action="tag" data-value="' + esc(t.tag) + '" aria-pressed="' + (active === t.tag ? 'true' : 'false') + '">' + esc(t.tag) + ' ' + esc(t.count) + '</button>';
     }).join('');
   }
 
@@ -206,9 +213,11 @@
     return results.map(function (r) {
       const meta = [];
       if (r.score !== undefined) meta.push('<span class="result-score">BM25 ' + scoreText(r.score) + '</span>');
-      else if (r.wordCount !== undefined) meta.push('<span>' + r.wordCount + ' words</span>');
+      else if (r.wordCount !== undefined) meta.push('<span>' + esc(r.wordCount) + ' words</span>');
       (r.tags || []).slice(0, 3).forEach(function (t) { meta.push('<span>#' + esc(t) + '</span>'); });
-      const snippet = r.snippet !== undefined ? r.snippet : esc(r.excerpt || '');
+      const snippet = r.snippet !== undefined
+        ? esc(r.snippet).replace(/&lt;(\/?mark)&gt;/g, '<$1>').replace(/&amp;(#\d+|#x[\da-f]+|amp|lt|gt|quot|apos);/gi, '&$1;')
+        : esc(r.excerpt || '');
       return '<li><button type="button" class="result" data-action="open" data-id="' + esc(r.id) + '" aria-current="' + (String(r.id) === String(selectedId) ? 'true' : 'false') + '">' +
         '<span class="result-title">' + esc(r.title) + '</span>' +
         '<span class="result-meta">' + meta.join('') + '</span>' +
@@ -216,45 +225,63 @@
     }).join('');
   }
 
+  function bodyBlocks(text) {
+    const tags = { '## ': 'h4', '- ': 'li', '> ': 'blockquote' };
+    return String(text || '').replace(/\r\n?/g, '\n').split(/\n{2,}/).filter(Boolean).map(function (b) {
+      const prefix = /^(## |- |> )/.exec(b);
+      return prefix ? { tag: tags[prefix[0]], text: b.slice(prefix[0].length) } : { tag: 'p', text: b };
+    });
+  }
+
   function renderBody(text, highlights) {
-    const blocks = String(text || '').split(/\n{2,}/).filter(Boolean);
-    const marks = (highlights || []).map(function (h) { return esc(h.text); });
-    function decorate(raw) {
-      let html = esc(raw);
-      marks.forEach(function (m) {
-        if (m && html.indexOf(m) >= 0) html = html.split(m).join('<mark class="saved">' + m + '</mark>');
-      });
-      return html;
-    }
-    let out = '';
-    let list = false;
+    const blocks = bodyBlocks(text);
+    // Match the article's text before escaping or inserting any HTML.
+    const source = blocks.map(function (b) { return b.text; }).join('\n');
+    const spans = [];
+    const phrases = new Set((highlights || []).map(function (h) { return h.text.trim().replace(/\s+/g, ' '); }));
+    phrases.forEach(function (phrase) {
+      if (!phrase) return;
+      const pattern = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+      for (const match of source.matchAll(new RegExp(pattern, 'g'))) spans.push([match.index, match.index + match[0].length]);
+    });
+    const merged = [];
+    spans.sort(function (a, b) { return a[0] - b[0]; }).forEach(function (span) {
+      const last = merged[merged.length - 1];
+      if (last && last[1] > span[0]) last[1] = Math.max(last[1], span[1]);
+      else merged.push(span);
+    });
+    let start = 0, i = 0, out = '', list = false;
     blocks.forEach(function (b) {
-      const isLi = b.indexOf('- ') === 0;
-      if (list && !isLi) { out += '</ul>'; list = false; }
-      if (isLi) {
-        if (!list) { out += '<ul>'; list = true; }
-        out += '<li>' + decorate(b.slice(2)) + '</li>';
-      } else if (b.indexOf('## ') === 0) {
-        out += '<h4>' + decorate(b.slice(3)) + '</h4>';
-      } else if (b.indexOf('> ') === 0) {
-        out += '<blockquote>' + decorate(b.slice(2)) + '</blockquote>';
-      } else {
-        out += '<p>' + decorate(b) + '</p>';
+      const end = start + b.text.length;
+      let pos = start, html = '';
+      while (i < merged.length && merged[i][0] < end) {
+        const [from, to] = merged[i];
+        html += esc(source.slice(pos, Math.max(pos, from))) +
+          '<mark class="saved">' + esc(source.slice(Math.max(pos, from), Math.min(end, to))) + '</mark>';
+        pos = Math.min(end, to);
+        if (to > end) break;
+        i++;
       }
+      html += esc(source.slice(pos, end));
+      if (list && b.tag !== 'li') { out += '</ul>'; list = false; }
+      if (!list && b.tag === 'li') { out += '<ul>'; list = true; }
+      out += '<' + b.tag + '>' + html + '</' + b.tag + '>';
+      start = end + 1;
     });
     return out + (list ? '</ul>' : '');
   }
 
   function renderReader(article, highlights) {
     if (!article) return '<p class="empty">Pick an article to read it here.</p>';
-    const meta = ['<span>' + article.wordCount + ' words</span>', '<span>saved ' + esc(article.savedAt) + '</span>']
+    const meta = ['<span>' + esc(article.wordCount) + ' words</span>', '<span>Saved ' + esc(article.savedAt) + '</span>']
       .concat((article.tags || []).map(function (t) { return '<span>#' + esc(t) + '</span>'; }));
     if (/^https?:\/\//i.test(String(article.url || ''))) {
       meta.push('<a href="' + esc(article.url) + '" rel="noopener noreferrer">original page</a>');
     }
-    return '<div class="reader-head"><h3 class="reader-title">' + esc(article.title) + '</h3>' +
+    return '<div class="reader-head"><h3 class="reader-title" tabindex="-1">' + esc(article.title) + '</h3>' +
       '<div class="reader-meta">' + meta.join('') + '</div></div>' +
-      '<div class="reader-body">' + renderBody(article.body, highlights) + '</div>' +
+      (article.body ? '<div class="reader-body" role="region" tabindex="0" aria-label="Article text">' + renderBody(article.body, highlights) + '</div>'
+        : '<p class="empty">No readable text was saved. Use the original page link if available.</p>') +
       '<div class="row-actions"><button type="button" class="btn btn-quiet btn-small" data-action="del-article" data-id="' + esc(article.id) + '">Delete this article</button></div>';
   }
 
@@ -262,8 +289,8 @@
     if (!list.length) return '<li class="empty">No highlights yet. Select text in the article and press the button.</li>';
     return list.map(function (h) {
       return '<li class="hl-item"><div><q>' + esc(h.text) + '</q>' + (h.note ? '<span class="hl-note">' + esc(h.note) + '</span>' : '') +
-        '<span class="hl-due">' + (h.interval ? 'next review ' + esc(h.due) + ', every ' + h.interval + ' day' + (h.interval === 1 ? '' : 's') : 'new, due ' + esc(h.due)) + '</span></div>' +
-        '<button type="button" class="icon-btn" data-action="hl-delete" data-id="' + esc(h.id) + '" aria-label="Delete this highlight">x</button></li>';
+        '<span class="hl-due">' + (h.interval ? 'Next review ' + esc(h.due) : 'New, due ' + esc(h.due)) + '</span></div>' +
+        '<button type="button" class="icon-btn" data-action="hl-delete" data-id="' + esc(h.id) + '" aria-label="Delete this highlight"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button></li>';
     }).join('');
   }
 
@@ -275,7 +302,7 @@
 
   function renderReview(due, revealed, today) {
     if (!due.length) {
-      return '<p class="empty">Nothing due. A highlight you save today comes back tomorrow, then in six days, then at longer and longer gaps.</p>';
+      return '<p class="empty" tabindex="-1">Nothing due. Save a highlight to review it today.</p>';
     }
     const h = due[0];
     let html = '<div class="review-card"><div class="review-source">' + esc(h.articleTitle || '') + '</div>' +
@@ -313,9 +340,11 @@
   function renderTabs(files, active) {
     return files.map(function (f) {
       const on = f.name === active;
-      return '<button type="button" role="tab" class="tab" id="tab-' + esc(f.name.replace(/\W/g, '')) + '" data-action="tab" data-id="' + esc(f.name) + '" aria-selected="' + on + '" tabindex="' + (on ? '0' : '-1') + '">' + esc(f.name) + '</button>';
+      return '<button type="button" role="tab" class="tab" id="' + studioTabId(f.name) + '" aria-controls="st-file" data-action="tab" data-id="' + esc(f.name) + '" aria-selected="' + on + '" tabindex="' + (on ? '0' : '-1') + '">' + esc(f.name) + '</button>';
     }).join('');
   }
+
+  function studioTabId(name) { return 'st-tab-' + name.replace(/\W+/g, '-'); }
 
   function describeCron(expr) {
     const t = String(expr || '').trim();
@@ -346,6 +375,8 @@
   function plain(text) {
     return String(text || '').replace(/^(## |- |> )/gm, '');
   }
+
+  function looksLikeHtml(text) { return /<\s*(html|head|title|body|main|section|p|div|article)\b/i.test(text || ''); }
 
   function cleanTags(tags) {
     const out = [];
@@ -379,16 +410,28 @@
         const raw = storage && storage.getItem(STORE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed && Array.isArray(parsed.articles) && Array.isArray(parsed.highlights)) return parsed;
+          if (parsed && Array.isArray(parsed.articles) && Array.isArray(parsed.highlights) &&
+              parsed.articles.every(function (a) { return a && typeof a.id === 'string' && Array.isArray(a.tags); }) &&
+              parsed.highlights.every(function (h) { return h && typeof h.id === 'string' && typeof h.text === 'string'; })) {
+            let next = Number.isSafeInteger(parsed.next) && parsed.next > 0 ? parsed.next : 1;
+            parsed.articles.concat(parsed.highlights).forEach(function (row) {
+              const id = /^[uh](\d+)$/.exec(row.id);
+              const n = id && Number(id[1]);
+              if (Number.isSafeInteger(n) && n < Number.MAX_SAFE_INTEGER) next = Math.max(next, n + 1);
+            });
+            return Object.assign(parsed, { next: next });
+          }
         }
       } catch (e) { /* fall through to a fresh seed */ }
       return seed();
     }
 
-    function save() {
-      idx = null;
-      try { storage.setItem(STORE_KEY, JSON.stringify(db)); }
+    function save(changes) {
+      const next = Object.assign({}, db, changes);
+      try { storage.setItem(STORE_KEY, JSON.stringify(next)); }
       catch (e) { throw new Error('Browser storage is full or blocked, so this change was not saved.'); }
+      if (next.articles !== db.articles) idx = null;
+      db = next;
     }
 
     function index() {
@@ -402,7 +445,7 @@
 
     db = load();
 
-    self.reset = async function () { db = seed(); save(); };
+    self.reset = async function () { save(seed()); };
     self.list = async function () {
       return db.articles.map(summary).sort(function (a, b) { return a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : a.title < b.title ? -1 : 1; });
     };
@@ -417,19 +460,21 @@
       const url = String(input.url || '').trim();
       if (url && !/^https?:\/\//i.test(url)) throw new Error('The address must start with http:// or https://.');
       const existing = url ? db.articles.find(function (a) { return a.url === url; }) : null;
-      const rec = existing || { id: 'u' + (db.next++), savedAt: today(), folder: '', note: '' };
+      const rec = existing ? Object.assign({}, existing) : { id: 'u' + db.next, savedAt: today(), folder: '', note: '' };
       rec.title = title; rec.url = url; rec.body = String(input.body || '');
       if (input.tags !== undefined || !existing) rec.tags = cleanTags(input.tags);
       if (input.folder) rec.folder = input.folder;
       if (input.note) rec.note = input.note;
-      if (!existing) db.articles.push(rec);
-      save();
+      save(existing
+        ? { articles: db.articles.map(function (a) { return a === existing ? rec : a; }) }
+        : { articles: db.articles.concat(rec), next: db.next + 1 });
       return summary(rec);
     };
     self.remove = async function (id) {
-      db.articles = db.articles.filter(function (a) { return String(a.id) !== String(id); });
-      db.highlights = db.highlights.filter(function (h) { return String(h.articleId) !== String(id); });
-      save();
+      save({
+        articles: db.articles.filter(function (a) { return String(a.id) !== String(id); }),
+        highlights: db.highlights.filter(function (h) { return String(h.articleId) !== String(id); })
+      });
     };
     self.search = async function (q, tag) {
       let rows;
@@ -449,17 +494,15 @@
       if (t.length > 4000) throw new Error('That selection is too long for a highlight.');
       if (!byId(articleId)) throw new Error('That article is gone.');
       const day = today();
-      const h = { id: 'h' + (db.next++), articleId: articleId, text: t, note: String(note || '').trim().slice(0, 200), created: day, repetitions: 0, interval: 0, ef: 2.5, due: day };
-      db.highlights.push(h);
-      save();
+      const h = { id: 'h' + db.next, articleId: articleId, text: t, note: String(note || '').trim().slice(0, 200), created: day, repetitions: 0, interval: 0, ef: 2.5, due: day };
+      save({ highlights: db.highlights.concat(h), next: db.next + 1 });
       return h;
     };
     self.highlights = async function (articleId) {
       return db.highlights.filter(function (h) { return articleId === undefined || String(h.articleId) === String(articleId); });
     };
     self.removeHighlight = async function (id) {
-      db.highlights = db.highlights.filter(function (h) { return String(h.id) !== String(id); });
-      save();
+      save({ highlights: db.highlights.filter(function (h) { return String(h.id) !== String(id); }) });
     };
     self.due = async function (day) {
       return db.highlights.filter(function (h) { return h.due <= day; })
@@ -470,20 +513,22 @@
       const h = db.highlights.find(function (x) { return String(x.id) === String(id); });
       if (!h) throw new Error('That highlight is gone.');
       const next = E.scheduleSm2Review({ repetitions: h.repetitions, interval: h.interval, ef: h.ef }, quality, day);
-      h.repetitions = next.repetitions; h.interval = next.interval; h.ef = next.ef; h.due = next.due;
-      save();
-      return h;
+      const reviewed = Object.assign({}, h, { repetitions: next.repetitions, interval: next.interval, ef: next.ef, due: next.due });
+      save({ highlights: db.highlights.map(function (row) { return row === h ? reviewed : row; }) });
+      return reviewed;
     };
     self.importBookmarks = async function (html) {
-      let added = 0;
+      let next = db.next;
       let skipped = 0;
+      const added = [];
+      const urls = new Set(db.articles.map(function (a) { return a.url; }));
       E.parseNetscapeBookmarks(html).forEach(function (it) {
-        if (db.articles.some(function (a) { return a.url === it.url; })) { skipped++; return; }
-        db.articles.push({ id: 'u' + (db.next++), title: it.title, url: it.url, tags: cleanTags(it.tags), savedAt: it.addDate || today(), folder: it.folder, note: it.note, body: it.note });
-        added++;
+        if (urls.has(it.url)) { skipped++; return; }
+        urls.add(it.url);
+        added.push({ id: 'u' + (next++), title: it.title, url: it.url, tags: cleanTags(it.tags), savedAt: it.addDate || today(), folder: it.folder, note: it.note, body: it.note });
       });
-      save();
-      return { added: added, skipped: skipped };
+      if (added.length) save({ articles: db.articles.concat(added), next: next });
+      return { added: added.length, skipped: skipped };
     };
     self.exportBookmarks = async function () {
       return E.exportNetscapeBookmarks(db.articles.filter(function (a) { return a.url; }).map(function (a) {
@@ -491,7 +536,7 @@
       }));
     };
     self.exportJson = async function () {
-      const payload = { version: 1, exportedAt: today(), next: db.next, articles: db.articles, highlights: db.highlights };
+      const payload = { version: 1, exportedAt: today(), next: db.next, articles: db.articles.slice(), highlights: db.highlights.slice() };
       payload.sha256 = await E.sha256Hex(E.canonicalJson(payload));
       return JSON.stringify(payload, null, 2);
     };
@@ -506,13 +551,14 @@
         if (digest !== parsed.sha256) throw new Error('The SHA-256 checksum in this file does not match its contents, so nothing was restored.');
         integrity = 'verified';
       }
-      const articlesByUrl = {};
-      const articlesByName = {};
+      const articlesByUrl = Object.create(null);
+      const articlesByName = Object.create(null);
       db.articles.forEach(function (a) {
         if (a.url) articlesByUrl[a.url] = a;
         else articlesByName[a.title + '|' + a.savedAt] = a;
       });
-      const idMap = {};
+      const idMap = Object.create(null);
+      let next = db.next;
       let skipped = 0;
       const addArticles = [];
       /* Ids in a backup belong to the vault that wrote it: dedupe on content
@@ -521,7 +567,7 @@
       parsed.articles.forEach(function (a) {
         const hit = a.url ? articlesByUrl[a.url] : articlesByName[a.title + '|' + (a.savedAt || today())];
         if (hit) { idMap[a.id] = hit.id; skipped++; return; }
-        const rec = { id: 'u' + (db.next++), title: a.title, url: a.url, tags: a.tags.slice(), savedAt: a.savedAt || today(), folder: a.folder, note: a.note, body: a.body };
+        const rec = { id: 'u' + (next++), title: a.title, url: a.url, tags: a.tags.slice(), savedAt: a.savedAt || today(), folder: a.folder, note: a.note, body: a.body };
         idMap[a.id] = rec.id;
         if (rec.url) articlesByUrl[rec.url] = rec;
         else articlesByName[rec.title + '|' + rec.savedAt] = rec;
@@ -537,14 +583,14 @@
         if (hlKeys[key]) { skipped++; return; }
         hlKeys[key] = true;
         addHighlights.push({
-          id: 'h' + (db.next++), articleId: aid, text: h.text, note: h.note,
+          id: 'h' + (next++), articleId: aid, text: h.text, note: h.note,
           created: h.created || today(), due: h.due || today(),
           repetitions: h.repetitions, interval: h.interval, ef: h.ef
         });
       });
-      db.articles = db.articles.concat(addArticles);
-      db.highlights = db.highlights.concat(addHighlights);
-      save();
+      if (addArticles.length || addHighlights.length) save({
+        articles: db.articles.concat(addArticles), highlights: db.highlights.concat(addHighlights), next: next
+      });
       return { added: addArticles.length + addHighlights.length, articles: addArticles.length, highlights: addHighlights.length, skipped: skipped, integrity: integrity };
     };
     return self;
@@ -572,11 +618,11 @@
     }
 
     self.ping = async function () { return (await call('GET', '/health')).data; };
-    self.list = async function () { return (await call('GET', '/api/articles')).data.articles; };
+    self.list = async function () { return (await call('GET', '/api/articles')).data?.articles; };
     self.get = async function (id) { return (await call('GET', '/api/articles/' + encodeURIComponent(id))).data; };
     self.add = async function (input) {
       const body = { title: input.title, url: input.url, tags: input.tags };
-      if (/<\s*(html|body|p|div|article)\b/i.test(input.body || '')) body.html = input.body; else body.text = input.body || '';
+      if (looksLikeHtml(input.body)) body.html = input.body; else body.text = input.body || '';
       return (await call('POST', '/api/articles', body)).data;
     };
     self.remove = async function (id) { await call('DELETE', '/api/articles/' + encodeURIComponent(id)); };
@@ -638,11 +684,34 @@
 
     function describe(e) { return e && e.message ? e.message : String(e); }
 
+    function renderActions(host, html) {
+      const focused = doc.activeElement;
+      const action = focused && host.contains(focused) && focused.dataset;
+      host.innerHTML = html;
+      if (!action || !action.action || !host.querySelectorAll) return;
+      const next = Array.from(host.querySelectorAll('[data-action]')).find(function (button) {
+        return button.dataset.action === action.action && button.dataset.id === action.id && button.dataset.value === action.value;
+      });
+      if (next) next.focus({ preventScroll: true });
+    }
+
     // ----- audit -----------------------------------------------------------
+
+    function flagOutOfRange(input) {
+      const invalid = !!(input.validity?.rangeOverflow || input.validity?.rangeUnderflow);
+      input.setAttribute('aria-invalid', String(invalid));
+      return invalid;
+    }
 
     function readCalcInputs() {
       const c = state.calc;
-      const read = function (id) { const v = parseFloat(byId(id).value); return isFinite(v) ? v : 0; };
+      let limited = false;
+      const read = function (id) {
+        const input = byId(id);
+        if (flagOutOfRange(input)) limited = true;
+        const v = parseFloat(input.value);
+        return isFinite(v) ? v : 0;
+      };
       c.hardwareCost = read('hw-cost');
       c.watts = read('hw-watts');
       c.kwhPrice = read('hw-kwh');
@@ -650,6 +719,7 @@
       c.saasGrowth = read('grow-saas') / 100;
       c.reinvest = read('grow-invest') / 100;
       state.calc = E.normalizeCalc(c);
+      say('hardware-status', limited ? 'An amount is outside its allowed range. The totals use the nearest allowed value.' : '', limited);
     }
 
     function writeCalcInputs() {
@@ -672,7 +742,10 @@
           let hash = win.location.hash || '';
           /* Keep section anchors intact; only a #szv= bookmark gets rewritten. */
           if (Lab && state.lab && hash.indexOf('#szv=') === 0) hash = '#szv=' + Lab.encodeLabHash(state.lab);
-          win.history.replaceState(null, '', win.location.pathname + (token ? '?c=' + token : '') + hash);
+          const params = new URLSearchParams(win.location.search);
+          if (token) params.set('c', token); else params.delete('c');
+          const query = params.toString();
+          win.history.replaceState(null, '', win.location.pathname + (query ? '?' + query : '') + hash);
         } catch (e) { /* file:// pages may refuse; the link button still works */ }
       }, 250);
     }
@@ -691,8 +764,17 @@
       }
     }
 
+    let auditResult;
+    function updateChart() {
+      const slider = byId('chart-month');
+      slider.value = String(state.month);
+      slider.setAttribute('aria-valuetext', 'Month ' + state.month);
+      drawChart(auditResult);
+      byId('chart-readout').textContent = chartReadout(auditResult, state.month);
+    }
+
     function renderAudit() {
-      const result = E.computeSubscriptionSavings(state.calc);
+      const result = auditResult = E.computeSubscriptionSavings(state.calc);
       byId('ledger-total').textContent = money(result.saasAnnual);
       byId('ledger-rows').innerHTML = renderLedgerRows(result);
       byId('ledger-foot').textContent = ledgerFoot(result, state.calc);
@@ -701,9 +783,7 @@
       const slider = byId('chart-month');
       slider.setAttribute('max', String(months));
       if (state.month > months) state.month = months;
-      slider.value = String(state.month);
-      drawChart(result);
-      byId('chart-readout').textContent = chartReadout(result, state.month);
+      updateChart();
       return result;
     }
 
@@ -725,6 +805,9 @@
         const row = t.closest ? t.closest('tr') : null;
         if (row && row.classList) { if (t.checked) row.classList.remove('is-off'); else row.classList.add('is-off'); }
       } else if (t.dataset.kind === 'price') {
+        if (t.setAttribute) flagOutOfRange(t);
+        const limited = !!byId('audit-subs').querySelector?.('[aria-invalid="true"]');
+        say('prices-status', limited ? 'Monthly prices must be between $0 and $1,000,000. The totals limit prices to that range.' : '', limited);
         const v = t.value;
         state.calc.prices[id] = v === '' ? null : parseFloat(v);
         if (v !== '' && !on.has(id)) {
@@ -757,30 +840,46 @@
       onCalcChanged();
     }
 
-    function copyText(text) {
+    async function copyText(text) {
       if (win && win.navigator && win.navigator.clipboard && win.navigator.clipboard.writeText) {
-        return win.navigator.clipboard.writeText(text);
+        try { await win.navigator.clipboard.writeText(text); return; }
+        catch (e) { /* The browser may still allow a copy from a selected text field. */ }
       }
-      return new Promise(function (resolve, reject) {
-        try {
-          const ta = doc.createElement('textarea');
-          ta.value = text;
-          ta.setAttribute('readonly', '');
-          doc.body.appendChild(ta);
-          ta.select();
-          const ok = doc.execCommand && doc.execCommand('copy');
-          doc.body.removeChild(ta);
-          if (ok) resolve(); else reject(new Error('copy blocked'));
-        } catch (e) { reject(e); }
-      });
+      const focus = doc.activeElement;
+      const ta = doc.createElement('textarea');
+      ta.value = text;
+      ta.className = 'sr-only';
+      ta.setAttribute('readonly', '');
+      doc.body.appendChild(ta);
+      try {
+        ta.select();
+        if (!doc.execCommand || !doc.execCommand('copy')) throw new Error('Copy was blocked.');
+      } finally {
+        doc.body.removeChild(ta);
+        focus?.focus({ preventScroll: true });
+      }
+    }
+
+    async function copyLink(link, fieldId, statusId, success) {
+      const field = byId(fieldId);
+      try {
+        await copyText(link);
+        field.hidden = true;
+        say(statusId, success);
+      } catch (e) {
+        field.value = link;
+        field.hidden = false;
+        field.focus();
+        field.select();
+        say(statusId, 'Copy was blocked. The share link is selected so you can copy it manually.');
+      }
     }
 
     async function onCopyScenario() {
       const token = E.encodeCalcState(state.calc);
       const loc = win.location;
       const link = loc.origin + loc.pathname + (token ? '?c=' + token : '') + '#audit';
-      try { await copyText(link); say('scenario-status', 'Link copied.'); }
-      catch (e) { say('scenario-status', 'Copy was blocked. Copy the address bar instead.', true); }
+      await copyLink(link, 'scenario-link', 'scenario-status', 'Scenario link copied.');
     }
 
     // ----- lab -------------------------------------------------------------
@@ -805,12 +904,10 @@
     function labTcoReadout(rep) {
       const h = rep.hardware.find(function (x) { return x.id === rep.profile; }) || rep.hardware[0];
       if (!h) return '';
-      if (h.breakEvenDay === null) {
-        return h.name + ' never catches the ' + money(rep.inputs.saasAnnual) + ' a year rent inside five years. ' +
-          'Over ' + rep.horizon + ' months it costs ' + money(h.tco) + ' against ' + money(h.rent) + ' of rent.';
-      }
-      return h.name + ' pays for itself on day ' + h.breakEvenDay + '. Over ' + rep.horizon + ' months it has cost ' +
-        money(h.tco) + ' while the rent would have run ' + money(h.rent) + ', so ' + money(h.net) + ' stays in your pocket.';
+      const comparison = h.net > 0 ? money(h.net) + ' less than renting' : h.net < 0 ? money(-h.net) + ' more than renting' : 'the same as renting';
+      return h.name + ' costs ' + money(h.tco) + ' over ' + rep.horizon + ' months, ' + comparison + '. ' +
+        (h.breakEvenDay === null ? 'No break-even at starting rates.'
+          : h.breakEvenDay === 0 ? 'No up-front cost.' : 'Breaks even on day ' + h.breakEvenDay + ' at starting rates.');
     }
 
     function labSm2Readout(rep) {
@@ -823,18 +920,18 @@
     function renderLab() {
       if (!hasLab) return;
       const s = state.lab;
-      byId('lab-tabs').innerHTML = Lab.renderLabTabs(s.view);
+      renderActions(byId('lab-tabs'), Lab.renderLabTabs(s.view));
       Lab.LAB_VIEWS.forEach(function (v) { byId('lab-view-' + v.id).hidden = s.view !== v.id; });
       const bundle = Lab.auditBundle(s, state.calc);
       const rep = bundle.payload;
-      byId('lab-tco-table').innerHTML = Lab.renderComparatorRows(rep, s.profile);
+      renderActions(byId('lab-tco-table'), Lab.renderComparatorRows(rep, s.profile));
       byId('lab-sens-table').innerHTML = Lab.renderSensitivityRows(rep, s.profile);
-      drawLabChart('lab-tco-chart', Lab.renderTcoChart(rep, { width: byId('lab-tco-chart').clientWidth || 640 }));
+      if (s.view === 'tco') drawLabChart('lab-tco-chart', Lab.renderTcoChart(rep, { width: byId('lab-tco-chart').clientWidth || 640 }));
       byId('lab-tco-readout').textContent = labTcoReadout(rep);
       byId('lab-bm25-out').innerHTML = Lab.renderBm25Rows(rep.bm25);
       byId('lab-stability').innerHTML = Lab.renderStabilityTiles(rep.bm25);
       byId('lab-sm2-table').innerHTML = Lab.renderSm2Rows(rep.sm2, s.strategy);
-      drawLabChart('lab-sm2-chart', Lab.renderSm2Chart(rep.sm2, { width: byId('lab-sm2-chart').clientWidth || 640 }));
+      if (s.view === 'diag') drawLabChart('lab-sm2-chart', Lab.renderSm2Chart(rep.sm2, { width: byId('lab-sm2-chart').clientWidth || 640 }));
       byId('lab-sm2-readout').textContent = labSm2Readout(rep);
       byId('lab-digest').textContent = bundle.sha256;
     }
@@ -859,8 +956,7 @@
       const token = E.encodeCalcState(state.calc);
       const loc = win.location;
       const link = loc.origin + loc.pathname + (token ? '?c=' + token : '') + '#szv=' + Lab.encodeLabHash(state.lab);
-      try { await copyText(link); say('lab-export-status', 'Share link copied. It restores this lab and this bill.'); }
-      catch (e) { say('lab-export-status', 'Copy was blocked. Copy the address bar instead.', true); }
+      await copyLink(link, 'lab-share-link', 'lab-export-status', 'Share link copied. It includes your prices and settings, not your search text.');
     }
 
     function onLabVerify() {
@@ -893,12 +989,16 @@
       byId('lab-strategy').innerHTML = Lab.SM2_STRATEGIES.map(function (s) {
         return '<option value="' + s.id + '">' + esc(s.name) + '</option>';
       }).join('');
-      const hash = win && win.location ? win.location.hash || '' : '';
-      if (hash.indexOf('#szv=') === 0) {
+      function restoreLab() {
+        const hash = win && win.location ? win.location.hash || '' : '';
+        if (!hash.startsWith('#szv=')) return false;
         const d = Lab.decodeLabHash(hash.slice(5));
         state.lab = d.state;
-        if (!d.ok) say('lab-status', 'The share bookmark was malformed, so the lab opened at its defaults.', true);
+        byId('lab-status').hidden = d.ok;
+        say('lab-status', d.ok ? '' : 'This share link is invalid. The lab is using its default settings.', !d.ok);
+        return true;
       }
+      const shared = restoreLab();
       writeLabInputs();
       ['lab-horizon', 'lab-strategy'].forEach(function (id) { byId(id).addEventListener('change', onLabInput); });
       ['lab-k1', 'lab-b', 'lab-query'].forEach(function (id) { byId(id).addEventListener('input', onLabInput); });
@@ -909,80 +1009,113 @@
       byId('lab-verify').addEventListener('click', onLabVerify);
       byId('lab-tamper').addEventListener('click', onLabTamper);
       byId('lab-run-tests').addEventListener('click', onLabRunTests);
+      byId('lab-tabs').addEventListener('keydown', function (e) { onTabKey(e, true); });
       if (win && win.addEventListener) {
         win.addEventListener('hashchange', function () {
-          const h = win.location ? win.location.hash || '' : '';
-          if (h.indexOf('#szv=') === 0) {
-            const d = Lab.decodeLabHash(h.slice(5));
-            state.lab = d.state;
-            if (!d.ok) say('lab-status', 'The share bookmark was malformed, so the lab opened at its defaults.', true);
+          if (restoreLab()) {
             writeLabInputs();
             renderLab();
+            byId('lab').scrollIntoView?.();
           }
         });
       }
       renderLab();
+      if (shared) byId('lab').scrollIntoView?.();
     }
 
     // ----- vault -----------------------------------------------------------
 
+    let readerSeq = 0, reviewSeq = 0;
+    let articleText = '';
+
+    function setHighlightTools(enabled) {
+      ['hl-text', 'hl-note', 'hl-save'].forEach(function (id) { byId(id).disabled = !enabled; });
+    }
+
+    function selectArticle(id) {
+      if (String(id) === String(state.selectedId)) return;
+      state.selectedId = id;
+      articleText = '';
+      byId('hl-text').value = '';
+      byId('hl-note').value = '';
+      say('hl-status', '');
+      setHighlightTools(false);
+    }
+
     async function refreshVault(keepSelection) {
       const seq = ++state.seq;
       const store = state.store;
+      const query = state.query.trim();
+      const current = function () { return seq === state.seq && store === state.store; };
       try {
         const all = await store.list();
-        const counts = {};
+        if (!current()) return;
+        const counts = Object.create(null);
         all.forEach(function (a) { (a.tags || []).forEach(function (t) { counts[t] = (counts[t] || 0) + 1; }); });
         const names = Object.keys(counts).sort(function (x, y) { return counts[y] - counts[x] || (x < y ? -1 : 1); });
-        const keep = names.slice(0, 12);
-        if (state.tag && keep.indexOf(state.tag) < 0 && counts[state.tag]) keep.push(state.tag);
-        const tags = keep.map(function (t) { return { tag: t, count: counts[t] }; });
-        const results = await store.search(state.query, state.tag);
-        if (seq !== state.seq) return;
-        byId('tag-filter').innerHTML = renderTagChips(tags, state.tag);
+        const tag = counts[state.tag] ? state.tag : '';
+        const tags = names.map(function (t) { return { tag: t, count: counts[t] }; });
+        const results = query ? await store.search(query, tag) : tag ? all.filter(function (r) { return r.tags.includes(tag); }) : all;
+        if (!current()) return;
+        state.tag = tag;
+        renderActions(byId('tag-filter'), renderTagChips(tags, tag));
         if (!keepSelection || !results.some(function (r) { return String(r.id) === String(state.selectedId); })) {
-          state.selectedId = results.length ? results[0].id : null;
+          selectArticle(results.length ? results[0].id : null);
         }
-        byId('results').innerHTML = renderResultsList(results, state.selectedId, !!state.query.trim(), store.kind === 'server' && !state.tag);
-        say('vault-status', state.query.trim()
-          ? results.length + ' result' + (results.length === 1 ? '' : 's') + ' for "' + state.query.trim() + '", best match first.'
-          : all.length + ' saved item' + (all.length === 1 ? '' : 's') + '.');
-        await refreshReader();
-        await refreshReview();
+        renderActions(byId('results'), renderResultsList(results, state.selectedId, !!query, store.kind === 'server' && !tag));
+        say('vault-status', query
+          ? results.length + ' result' + (results.length === 1 ? '' : 's') + ' for "' + query + '"' + (tag ? ' in "' + tag + '"' : '') + ', best match first.'
+          : results.length + ' saved item' + (results.length === 1 ? '' : 's') + (tag ? ' in "' + tag + '"' : '') + '.');
+        await Promise.all([refreshReader(), refreshReview()]);
       } catch (e) {
-        say('vault-status', describe(e), true);
+        if (current()) say('vault-status', describe(e), true);
       }
     }
 
     async function refreshReader() {
-      if (state.selectedId === null || state.selectedId === undefined) {
+      const seq = ++readerSeq;
+      const id = state.selectedId, store = state.store;
+      const current = function () { return seq === readerSeq && store === state.store && id === state.selectedId; };
+      if (id === null || id === undefined) {
         byId('reader').innerHTML = renderReader(null);
-        byId('highlights').innerHTML = renderHighlights([]);
-        return;
+        byId('highlights').innerHTML = '';
+        return false;
       }
       try {
-        const art = await state.store.get(state.selectedId);
-        const hl = await state.store.highlights(state.selectedId);
+        const [art, hl] = await Promise.all([store.get(id), store.highlights(id)]);
+        if (!current()) return false;
         byId('reader').innerHTML = renderReader(art, hl);
-        byId('highlights').innerHTML = renderHighlights(hl);
+        renderActions(byId('highlights'), renderHighlights(hl));
+        articleText = bodyBlocks(art.body).map(function (block) { return block.text; }).join(' ').replace(/\s+/g, ' ').trim();
+        setHighlightTools(!!articleText);
+        return true;
       } catch (e) {
-        state.selectedId = null;
-        byId('reader').innerHTML = renderReader(null);
-        byId('highlights').innerHTML = renderHighlights([]);
+        if (!current()) return false;
+        byId('reader').innerHTML = '<p class="empty">Could not open this article. Select it again to retry.</p>';
+        byId('highlights').innerHTML = '';
+        articleText = '';
+        setHighlightTools(false);
+        say('vault-status', describe(e), true);
+        return false;
       }
     }
 
     async function refreshReview() {
-      state.due = await state.store.due(today());
+      const seq = ++reviewSeq;
+      const store = state.store;
+      const due = await store.due(today());
+      if (seq !== reviewSeq || store !== state.store) return;
+      if (state.due[0]?.id !== due[0]?.id) state.revealed = false;
+      state.due = due;
       byId('review-count').textContent = state.due.length + ' due';
-      byId('review-card').innerHTML = renderReview(state.due, state.revealed, today());
+      renderActions(byId('review-card'), renderReview(state.due, state.revealed, today()));
     }
 
     function setMode() {
       const server = state.store.kind === 'server';
       const pill = byId('storage-pill');
       pill.setAttribute('data-mode', server ? 'server' : 'local');
-      byId('storage-label').textContent = server ? 'Storage: your server' : 'Storage: this browser';
+      byId('storage-label').textContent = server ? 'Your server' : 'This browser';
       byId('srv-disconnect').disabled = !server;
       byId('reset-demo').disabled = server;
     }
@@ -997,19 +1130,30 @@
       }
     }
 
+    let connectionSeq = 0;
     async function connect(url, token, silent) {
-      const candidate = ServerStore(url, token, fetchFn);
+      const seq = ++connectionSeq;
+      let candidate;
       try {
+        let address;
+        try { address = new URL(url.trim()); } catch (e) { /* handled below */ }
+        if (!address || !/^https?:$/.test(address.protocol) || address.username || address.password || address.search || address.hash) {
+          throw new Error('Enter an http:// or https:// server address without credentials, a query or a fragment.');
+        }
+        candidate = ServerStore(address.href, token, fetchFn);
+        if (!silent) say('srv-status', 'Connecting...');
         const health = await candidate.ping();
         if (!health || !health.ok) throw new Error('That address did not answer like a SubZero Vault server.');
         if (health.auth && !token) throw new Error('This server needs a token. Paste it in the token box.');
-        await candidate.list();
+        if (!Array.isArray(await candidate.list())) throw new Error('That address did not return a vault article list.');
       } catch (e) {
-        if (!silent) say('srv-status', describe(e), true);
+        if (!silent && seq === connectionSeq) say('srv-status', describe(e), true);
         return false;
       }
+      if (seq !== connectionSeq) return false;
       state.store = candidate;
-      state.selectedId = null;
+      selectArticle(null);
+      state.due = [];
       state.revealed = false;
       setMode();
       setClip(token);
@@ -1022,8 +1166,10 @@
     }
 
     async function disconnect() {
+      connectionSeq++;
       state.store = LocalStore(storage, today);
-      state.selectedId = null;
+      selectArticle(null);
+      state.due = [];
       state.revealed = false;
       try { if (o.sessionStorage) o.sessionStorage.removeItem(SERVER_KEY); } catch (e) { /* ignore */ }
       setMode();
@@ -1032,100 +1178,144 @@
       await refreshVault(false);
     }
 
-    function guarded(fn) {
+    function guarded(fn, status, button) {
       return async function (e) {
+        const control = button && byId(button);
+        if (e && e.preventDefault) e.preventDefault();
+        if (control && control.disabled) return;
+        if (control) control.disabled = true;
         try { await fn(e); }
-        catch (err) { say('vault-status', describe(err), true); }
+        catch (err) { say(status || 'vault-status', describe(err), true); }
+        finally { if (control) control.disabled = button === 'hl-save' && !articleText; }
       };
     }
 
     const onLoadSamples = guarded(async function () {
+      const store = state.store;
       for (let i = 0; i < Samples.articles.length; i++) {
         const s = Samples.articles[i];
-        const saved = await state.store.add({ title: s.title, url: '', body: s.body, tags: s.tags });
+        const saved = await store.add({ title: s.title, url: '', body: s.body, tags: s.tags });
         const marks = Samples.highlights.filter(function (h) { return h.articleId === s.id; });
-        for (let j = 0; j < marks.length; j++) await state.store.addHighlight(saved.id, marks[j].text, marks[j].note);
+        for (let j = 0; j < marks.length; j++) await store.addHighlight(saved.id, marks[j].text, marks[j].note);
       }
-      say('vault-status', 'Samples loaded.');
-      await refreshVault(false);
+      if (store === state.store) {
+        await refreshVault(false);
+        say('vault-status', 'Samples loaded.');
+      }
     });
 
     async function onOpen(id) {
-      state.selectedId = id;
-      await refreshVault(true);
-      // One column on a narrow screen puts the reader far below the list, so bring it up.
-      const narrow = win && win.matchMedia && win.matchMedia('(max-width: 960px)').matches;
+      selectArticle(id);
+      byId('results').querySelectorAll?.('.result').forEach(function (button) {
+        button.setAttribute('aria-current', String(button.dataset.id === id));
+      });
+      if (!await refreshReader()) return;
+      const heading = byId('reader').querySelector?.('.reader-title');
       const panel = byId('reader').parentNode;
-      if (narrow && panel && panel.scrollIntoView) {
-        const calm = win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        panel.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
-      }
+      if (heading) heading.focus();
+      if (panel && panel.scrollIntoView && win.matchMedia('(max-width: 960px)').matches) panel.scrollIntoView({ block: 'start' });
+    }
+
+    function selectedPassage() {
+      const selection = win.getSelection?.();
+      const body = byId('reader').querySelector?.('.reader-body');
+      if (!body || !selection || !selection.rangeCount) return '';
+      const range = selection.getRangeAt(0);
+      if (!body.contains(range.startContainer) || !body.contains(range.endContainer)) return '';
+      return String(selection).replace(/\s+/g, ' ').trim();
     }
 
     const onHighlightSave = guarded(async function () {
-      const sel = win.getSelection ? win.getSelection() : null;
-      const text = sel ? String(sel.toString()).replace(/\s+/g, ' ').trim() : '';
-      const reader = byId('reader');
-      const inside = sel && sel.anchorNode && reader.contains ? reader.contains(sel.anchorNode) : !!text;
-      if (!text || !inside) { say('vault-status', 'Select some text inside the article first, then press the button.', true); return; }
-      if (state.selectedId === null) { say('vault-status', 'Open an article first.', true); return; }
-      await state.store.addHighlight(state.selectedId, text, byId('hl-note').value);
+      const input = byId('hl-text');
+      const text = (input.value || selectedPassage()).replace(/\s+/g, ' ').trim();
+      if (!text || !articleText.includes(text)) {
+        say('hl-status', 'Select some text inside the article or paste its exact wording.', true);
+        input.focus();
+        return;
+      }
+      const store = state.store, id = state.selectedId;
+      await store.addHighlight(id, text, byId('hl-note').value);
+      if (store !== state.store || id !== state.selectedId) return;
+      input.value = '';
       byId('hl-note').value = '';
-      if (sel.removeAllRanges) sel.removeAllRanges();
-      say('vault-status', 'Highlight saved. It is due for review today.');
+      win.getSelection?.()?.removeAllRanges();
+      say('hl-status', 'Highlight saved. It is due for review today.');
       await refreshReader();
       await refreshReview();
-    });
+    }, 'hl-status', 'hl-save');
 
+    let rating = false;
     const onRate = guarded(async function (quality) {
       const h = state.due[0];
-      if (!h) return;
-      await state.store.review(h.id, quality, today());
-      state.revealed = false;
-      await refreshReview();
-      await refreshReader();
-    });
+      if (!h || rating) return;
+      const store = state.store;
+      rating = true;
+      try {
+        await store.review(h.id, quality, today());
+        if (store !== state.store) return;
+        state.revealed = false;
+        await refreshReview();
+        byId('review-card').querySelector?.('[data-action="show-answer"], .empty')?.focus();
+        say('review-status', 'Review saved.');
+        if (String(state.selectedId) === String(h.articleId)) await refreshReader();
+      } finally {
+        rating = false;
+      }
+    }, 'review-status');
 
-    const onAdd = guarded(async function (e) {
-      if (e && e.preventDefault) e.preventDefault();
+    const onAdd = guarded(async function () {
       const raw = byId('add-body').value;
       let body = raw;
       let title = byId('add-title').value.trim();
-      const looksHtml = /<\s*(html|body|p|div|article)\b/i.test(raw);
+      const looksHtml = looksLikeHtml(raw);
       if (state.store.kind === 'local' && looksHtml) {
         const got = E.extractReadable(raw);
         body = got.text;
         title = title || got.title;
       }
-      if (!title && !byId('add-url').value.trim()) { say('add-status', 'Add a title, an address, or paste a page that has a title.', true); return; }
-      const saved = await state.store.add({ title: title, url: byId('add-url').value, body: body, tags: byId('add-tags').value.split(',') });
+      const store = state.store;
+      const url = byId('add-url').value.trim();
+      if (!title && !url && !(looksHtml && store.kind === 'server')) { say('add-status', 'Add a title, an address, or paste a page that has a title.', true); return; }
+      if (url) {
+        let address;
+        try { address = new URL(url); } catch (e) { /* handled below */ }
+        if (!address || !/^https?:$/.test(address.protocol) || !/^https?:\/\//i.test(url)) {
+          say('add-status', 'Enter a full article address starting with http:// or https://.', true);
+          byId('add-url').focus();
+          return;
+        }
+      }
+      const saved = await store.add({ title: title, url: url, body: body, tags: byId('add-tags').value.split(',') });
+      if (store !== state.store) return;
       byId('add-title').value = ''; byId('add-url').value = ''; byId('add-tags').value = ''; byId('add-body').value = '';
       say('add-status', 'Saved "' + saved.title + '".');
       state.query = ''; byId('q').value = ''; state.tag = '';
-      state.selectedId = saved.id;
+      selectArticle(saved.id);
       await refreshVault(true);
-    });
+    }, 'add-status', 'add-submit');
 
     const onImport = guarded(async function () {
       const input = byId('import-file');
       const file = input.files && input.files[0];
       if (!file) { say('import-status', 'Choose a bookmarks file first.', true); return; }
-      const html = await file.text();
-      const r = await state.store.importBookmarks(html);
+      const store = state.store;
+      const r = await store.importBookmarks(await file.text());
+      if (store !== state.store) return;
       say('import-status', 'Added ' + r.added + ' bookmark' + (r.added === 1 ? '' : 's') + (r.skipped ? ', skipped ' + r.skipped + ' already saved.' : '.'));
       await refreshVault(true);
-    });
+    }, 'import-status', 'import-btn');
 
     const onImportJson = guarded(async function () {
       const input = byId('import-json-file');
       const file = input.files && input.files[0];
       if (!file) { say('import-json-status', 'Choose a vault JSON backup first.', true); return; }
-      const text = await file.text();
-      const r = await state.store.importJson(text);
+      const store = state.store;
+      const r = await store.importJson(await file.text());
+      if (store !== state.store) return;
       const checked = r.integrity === 'verified' ? ' Checksum verified.' : (r.integrity === 'unsigned' ? ' The file had no checksum.' : '');
       say('import-json-status', 'Restored ' + r.added + ' item' + (r.added === 1 ? '' : 's') + (r.skipped ? ', skipped ' + r.skipped + ' already saved.' : '.') + checked);
       await refreshVault(true);
-    });
+    }, 'import-json-status', 'import-json-btn');
 
     function download(name, text, type) {
       const blob = new win.Blob([text], { type: type });
@@ -1149,8 +1339,9 @@
     });
 
     const onReset = guarded(async function () {
+      if (!win.confirm('Replace this browser vault with the samples? This deletes your articles, highlights and review history. Export a JSON backup first if you want to keep them.')) return;
       await state.store.reset();
-      state.query = ''; byId('q').value = ''; state.tag = ''; state.selectedId = null; state.revealed = false;
+      state.query = ''; byId('q').value = ''; state.tag = ''; selectArticle(null); state.revealed = false;
       await refreshVault(false);
       say('vault-status', 'Samples restored.');
     });
@@ -1158,8 +1349,9 @@
     let searchTimer = null;
     function onSearchInput() {
       state.query = byId('q').value;
+      state.seq++;
       if (searchTimer) win.clearTimeout(searchTimer);
-      searchTimer = win.setTimeout(function () { state.selectedId = null; refreshVault(false); }, delay);
+      searchTimer = win.setTimeout(function () { refreshVault(true); }, delay);
     }
 
     // ----- studio ----------------------------------------------------------
@@ -1189,15 +1381,20 @@
       msg.textContent = cron.text;
       if (msg.classList) { if (cron.ok) msg.classList.remove('is-error'); else msg.classList.add('is-error'); }
       byId('st-cron').setAttribute('aria-invalid', cron.ok ? 'false' : 'true');
-      byId('st-domain').disabled = options.proxy !== 'caddy';
+      const isCaddy = options.proxy === 'caddy';
+      byId('st-domain').disabled = !isCaddy;
+      byId('st-domain-field').hidden = !isCaddy;
       state.studioFiles = studioFiles(options);
       if (!state.studioFiles.some(function (f) { return f.name === state.studioTab; })) state.studioTab = state.studioFiles[0].name;
-      byId('st-tabs').innerHTML = renderTabs(state.studioFiles, state.studioTab);
+      renderActions(byId('st-tabs'), renderTabs(state.studioFiles, state.studioTab));
+      byId('st-file').setAttribute('aria-labelledby', studioTabId(state.studioTab));
       const file = state.studioFiles.find(function (f) { return f.name === state.studioTab; });
       byId('st-out').innerHTML = renderCode(file.text);
+      byId('st-copy').disabled = byId('st-download').disabled = !cron.ok;
     }
 
     const onStudioCopy = guarded(async function () {
+      if (byId('st-copy').disabled) return;
       const file = state.studioFiles.find(function (f) { return f.name === state.studioTab; });
       try { await copyText(file.text); say('st-status', 'Copied ' + file.name + '.'); }
       catch (e) { say('st-status', 'Copy was blocked. Select the text and copy it by hand.', true); }
@@ -1209,6 +1406,7 @@
     });
 
     function onStudioDownload() {
+      if (byId('st-download').disabled) return;
       const file = state.studioFiles.find(function (f) { return f.name === state.studioTab; });
       download(file.name, file.text, 'text/plain');
       say('st-status', 'Downloaded ' + file.name + '.');
@@ -1226,16 +1424,23 @@
       say('st-status', 'New token generated. Keep it out of version control.');
     }
 
-    function onTabKey(e) {
-      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-      const names = state.studioFiles.map(function (f) { return f.name; });
-      const i = names.indexOf(state.studioTab);
-      const next = names[(i + (e.key === 'ArrowRight' ? 1 : names.length - 1)) % names.length];
-      state.studioTab = next;
-      renderStudio();
-      const btn = doc.querySelector ? doc.querySelector('[role="tab"][aria-selected="true"]') : null;
-      if (btn && btn.focus) btn.focus();
-      if (e.preventDefault) e.preventDefault();
+    function onTabKey(e, lab) {
+      if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+      const names = lab ? Lab.LAB_VIEWS.map(function (v) { return v.id; })
+        : state.studioFiles.map(function (f) { return f.name; });
+      const i = names.indexOf(lab ? state.lab.view : state.studioTab);
+      const next = names[e.key === 'Home' ? 0 : e.key === 'End' ? names.length - 1
+        : (i + (e.key === 'ArrowRight' ? 1 : names.length - 1)) % names.length];
+      if (lab) {
+        state.lab.view = next;
+        renderLab();
+        syncUrl();
+      } else {
+        state.studioTab = next;
+        renderStudio();
+      }
+      byId(lab ? 'lab-tabs' : 'st-tabs').querySelector?.('[aria-selected="true"]')?.focus();
+      e.preventDefault?.();
     }
 
     // ----- wiring ----------------------------------------------------------
@@ -1246,11 +1451,29 @@
       const d = hit.dataset;
       switch (d.action) {
         case 'open': onOpen(d.id); break;
-        case 'tag': state.tag = d.value; state.selectedId = null; refreshVault(false); break;
-        case 'del-article': guarded(async function () { await state.store.remove(d.id); state.selectedId = null; await refreshVault(false); say('vault-status', 'Article deleted.'); })(); break;
+        case 'tag': state.tag = d.value; refreshVault(true); break;
+        case 'del-article': guarded(async function () {
+          if (!win.confirm('Delete this article and its highlights?')) return;
+          const store = state.store;
+          await store.remove(d.id);
+          if (store !== state.store) return;
+          if (String(state.selectedId) === d.id) selectArticle(null);
+          await refreshVault(true);
+          byId('results-title').focus();
+          say('vault-status', 'Article deleted.');
+        })(); break;
         case 'hl-delete': guarded(async function () { await state.store.removeHighlight(d.id); await refreshReader(); await refreshReview(); })(); break;
-        case 'load-samples': onLoadSamples(); break;
-        case 'show-answer': state.revealed = true; byId('review-card').innerHTML = renderReview(state.due, true, today()); break;
+        case 'load-samples':
+          if (!hit.disabled) {
+            hit.disabled = true;
+            onLoadSamples().finally(function () { hit.disabled = false; });
+          }
+          break;
+        case 'show-answer':
+          state.revealed = true;
+          byId('review-card').innerHTML = renderReview(state.due, true, today());
+          byId('review-card').querySelector?.('[data-action="rate"]')?.focus();
+          break;
         case 'rate': onRate(parseInt(d.q, 10)); break;
         case 'tab': state.studioTab = d.id; renderStudio(); break;
         case 'lab-view': if (hasLab) { state.lab.view = Lab.normalizeLabState({ view: d.id }).view; renderLab(); syncUrl(); } break;
@@ -1281,7 +1504,7 @@
       byId('audit-subs').addEventListener('change', onSubEvent);
       byId('chart-month').addEventListener('input', function () {
         state.month = parseInt(byId('chart-month').value, 10) || 0;
-        renderAudit();
+        updateChart();
       });
       byId('copy-scenario').addEventListener('click', onCopyScenario);
       byId('qs-copy').addEventListener('click', onQuickstartCopy);
@@ -1294,19 +1517,26 @@
         const drawn = Number(svg.getAttribute('width')) || r.width;
         const months = parseInt(byId('chart-month').getAttribute('max'), 10) || 0;
         const mi = monthAtX((e.clientX - r.left) * (drawn / (r.width || drawn)), drawn, months);
-        if (mi !== state.month) { state.month = mi; renderAudit(); }
+        if (mi !== state.month) { state.month = mi; updateChart(); }
       };
-      chartBox.addEventListener('pointermove', scrubTo);
+      let pointer = null;
+      chartBox.addEventListener('pointermove', function (e) {
+        if (!e.pointerType || e.pointerType === 'mouse' || e.pointerId === pointer) scrubTo(e);
+      });
       chartBox.addEventListener('pointerdown', function (e) {
-        // The chart is redrawn on every step, so keep the drag on the box rather than on a replaced picture.
+        if (e.isPrimary === false) return;
+        pointer = e.pointerId;
         if (chartBox.setPointerCapture && e.pointerId !== undefined) { try { chartBox.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ } }
         scrubTo(e);
+      });
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (event) {
+        chartBox.addEventListener(event, function (e) { if (e.pointerId === pointer) pointer = null; });
       });
       if (win && win.addEventListener) {
         let rz = null;
         win.addEventListener('resize', function () {
           if (rz) win.clearTimeout(rz);
-          rz = win.setTimeout(function () { drawChart(E.computeSubscriptionSavings(state.calc)); }, 150);
+          rz = win.setTimeout(function () { drawChart(auditResult); renderLab(); }, 150);
         });
       }
 
@@ -1315,6 +1545,11 @@
       setMode();
       byId('q').addEventListener('input', onSearchInput);
       byId('hl-save').addEventListener('click', onHighlightSave);
+      doc.addEventListener('selectionchange', function () {
+        if (!articleText) return;
+        const text = selectedPassage();
+        if (text) byId('hl-text').value = text;
+      });
       byId('add-form').addEventListener('submit', onAdd);
       byId('import-btn').addEventListener('click', onImport);
       byId('import-json-btn').addEventListener('click', onImportJson);
@@ -1324,9 +1559,15 @@
       byId('srv-form').addEventListener('submit', function (e) { e.preventDefault(); connect(byId('srv-url').value, byId('srv-token').value, false); });
       byId('srv-disconnect').addEventListener('click', disconnect);
       byId('storage-pill').addEventListener('click', function () {
-        const target = byId('srv-url');
-        if (target.closest) { const dr = target.closest('details'); if (dr) dr.open = true; }
-        if (target.focus) target.focus();
+        byId('server-drawer').open = true;
+        byId('srv-url').focus();
+      });
+      byId('server-drawer').addEventListener('toggle', function () {
+        byId('storage-pill').setAttribute('aria-expanded', String(byId('server-drawer').open));
+      });
+      byId('clip-link').addEventListener('click', function (e) {
+        e.preventDefault();
+        say('srv-status', 'Drag the bookmarklet to your bookmarks bar, then use it on the page you want to save.');
       });
       doc.addEventListener('click', onClick);
 
@@ -1363,8 +1604,15 @@
           const ct = res.headers && res.headers.get ? res.headers.get('content-type') || '' : '';
           if (res.ok && ct.indexOf('json') >= 0) {
             const data = await res.json();
-            if (data && data.ok && !data.auth) await connect(new win.URL('.', win.location.href).href, '', true);
-            else if (data && data.ok && data.auth) say('srv-status', 'This page is served by a vault that needs a token. Open "Connect your server" and paste it.');
+            if (data && data.ok) {
+              const url = new URL('.', win.location.href).href;
+              byId('srv-url').value = url;
+              if (!data.auth) await connect(url, '', true);
+              else {
+                byId('server-drawer').open = true;
+                say('srv-status', 'This server needs an access token. Paste it here to use server storage.');
+              }
+            }
           }
         }
       } catch (e) { /* no same-origin server, stay on browser storage */ }
@@ -1373,33 +1621,13 @@
     return { state: state, init: init, renderAudit: renderAudit, renderStudio: renderStudio, refreshVault: refreshVault, connect: connect, disconnect: disconnect, handlers: { onClick: onClick, onSubEvent: onSubEvent, onAdd: onAdd, onRate: onRate, onSearchInput: onSearchInput, onGenToken: onGenToken, onTabKey: onTabKey } };
   }
 
-  function initReveal(doc, win) {
-    const targets = doc.querySelectorAll('.section-head, .panel, .tiles, .chart-card, .mode, .ledger, .vault-forms');
-    const reduce = win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduce || !('IntersectionObserver' in win)) return;
-    const io = new win.IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (en.isIntersecting) { en.target.classList.add('is-in'); io.unobserve(en.target); }
-      });
-    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.04 });
-    Array.prototype.forEach.call(targets, function (t) {
-      const r = t.getBoundingClientRect();
-      t.classList.add('reveal');
-      if (r.top < win.innerHeight) t.classList.add('is-in'); else io.observe(t);
-    });
-    win.setTimeout(function () { Array.prototype.forEach.call(targets, function (t) { t.classList.add('is-in'); }); }, 6000);
-  }
-
   function mount(win) {
     const doc = win.document;
     let storage = null;
     let session = null;
     try { storage = win.localStorage; } catch (e) { storage = null; }
     try { session = win.sessionStorage; } catch (e) { session = null; }
-    const memory = {};
-    if (!storage) storage = { getItem: function (k) { return memory[k] || null; }, setItem: function (k, v) { memory[k] = String(v); }, removeItem: function (k) { delete memory[k]; } };
     const app = createApp(doc, win, { storage: storage, sessionStorage: session });
-    initReveal(doc, win);
     app.init();
     return app;
   }

@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 COPY server ./server
 COPY tests/fixtures ./tests/fixtures
-COPY index.html styles.css engine.js app.js samples.js favicon.svg ./
+COPY index.html styles.css engine.js samples.js vault-lab.js app.js favicon.svg ./
 COPY fonts ./fonts
 COPY img ./img
 

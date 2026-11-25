@@ -190,9 +190,9 @@
   ];
 
   const LAB_VIEWS = [
-    { id: 'tco', name: 'Hardware TCO' },
-    { id: 'diag', name: 'Search and review' },
-    { id: 'export', name: 'Exports and checks' }
+    { id: 'tco', name: 'Costs' },
+    { id: 'diag', name: 'Diagnostics' },
+    { id: 'export', name: 'Exports' }
   ];
 
   const HORIZONS = [12, 36, 60];
@@ -729,7 +729,7 @@
   function renderLabTabs(active) {
     return LAB_VIEWS.map(function (v) {
       const on = v.id === active;
-      return '<button type="button" role="tab" class="tab" data-action="lab-view" data-id="' + v.id +
+      return '<button type="button" role="tab" class="tab" id="lab-tab-' + v.id + '" aria-controls="lab-view-' + v.id + '" data-action="lab-view" data-id="' + v.id +
         '" aria-selected="' + on + '" tabindex="' + (on ? '0' : '-1') + '">' + esc(v.name) + '</button>';
     }).join('');
   }
@@ -738,8 +738,8 @@
     return report.hardware.map(function (h) {
       const on = h.id === selected;
       return '<tr' + (on ? ' class="is-sel"' : '') + '>' +
-        '<td><button type="button" class="chip lab-pick" data-action="lab-profile" data-id="' + esc(h.id) +
-        '" aria-pressed="' + on + '" title="' + esc(h.note) + '">' + esc(h.name) + '</button></td>' +
+        '<th scope="row"><button type="button" class="chip lab-pick" data-action="lab-profile" data-id="' + esc(h.id) +
+        '" aria-pressed="' + on + '" title="' + esc(h.note) + '">' + esc(h.name) + '</button></th>' +
         '<td class="num">' + fmtMoney(h.cost) + '</td>' +
         '<td class="num">' + h.watts + '</td>' +
         '<td class="num">' + h.kwhYear.toFixed(2) + '</td>' +
@@ -767,7 +767,7 @@
 
   /* The 60 month cumulative cost chart: the rent line plus one line per
      profile, a marker where each line catches the rent, and a dashed marker on
-     the chosen horizon. Break-even markers are focusable and carry titles. */
+     the chosen horizon. Break-even markers carry pointer titles and chart descriptions. */
   function renderTcoChart(report, opts) {
     const o = opts || {};
     const W = Math.max(280, Math.round(o.width || 640));
@@ -797,7 +797,7 @@
     for (let g = 0; g <= 4; g++) {
       const v = maxV * g / 4;
       grid += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + py(v).toFixed(1) + '" y2="' + py(v).toFixed(1) + '"/>';
-      yLabels += '<text x="' + (m.l - 8) + '" y="' + (py(v) + 4).toFixed(1) + '" text-anchor="end">' + fmtMoney0(v) + '</text>';
+      yLabels += '<text x="' + (m.l - 8) + '" y="' + (py(v) + 4).toFixed(1) + '" text-anchor="end">' + E.axisDollars(v) + '</text>';
     }
     for (let i = 0; i <= months; i += 12) {
       xLabels += '<text x="' + px(i).toFixed(1) + '" y="' + (H - m.b + 18) + '" text-anchor="' + (i === 0 ? 'start' : 'middle') + '">' + i + '</text>';
@@ -806,19 +806,18 @@
 
     let lines = '<path class="line line-saas" d="' + path(report.series.saas) + '"/>';
     let endLabels = '<text class="chart-label chart-label-saas" x="' + (W - m.r) + '" y="' + (py(report.series.saas[months]) - 8).toFixed(1) +
-      '" text-anchor="end">Cloud rent ' + fmtMoney0(report.series.saas[months]) + '</text>';
-    const used = [py(report.series.saas[months])];
+      '" text-anchor="end">Cloud rent ' + E.axisDollars(report.series.saas[months]) + '</text>';
     report.hardware.forEach(function (h) {
       const s = report.series.own[h.id];
       if (!s) return;
       const sel = h.id === report.profile;
       lines += '<path class="line line-hw hw-' + h.id + (sel ? ' is-sel' : '') + '" d="' + path(s) + '"/>';
-      let y = py(s[months]);
-      for (let i = 0; i < used.length; i++) { if (Math.abs(y - used[i]) < 13) y = used[i] - 14; }
-      used.push(y);
       if (sel) {
-        endLabels += '<text class="chart-label chart-label-own" x="' + (W - m.r) + '" y="' + (y - 8).toFixed(1) +
-          '" text-anchor="end">' + esc(h.name) + ' ' + fmtMoney0(s[months]) + '</text>';
+        const rentY = py(report.series.saas[months]) - 8;
+        const ownY = py(s[months]) - 8;
+        const y = Math.abs(ownY - rentY) < 16 ? rentY + 16 : ownY;
+        endLabels += '<text class="chart-label chart-label-own" x="' + (W - m.r) + '" y="' + y.toFixed(1) +
+          '" text-anchor="end">' + (W < 380 ? 'Selected box' : esc(h.name)) + ' ' + E.axisDollars(s[months]) + '</text>';
       }
     });
 
@@ -830,15 +829,17 @@
       const cx = px(cm), cy = py(at(report.series.saas, cm));
       crossDesc.push(h.name + ' at month ' + cm.toFixed(1));
       marks += '<circle class="cross-dot lab-mark" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) +
-        '" r="5" tabindex="0"><title>' + esc(h.name + ' breaks even at month ' + cm.toFixed(1) +
+        '" r="5"><title>' + esc(h.name + ' breaks even at month ' + cm.toFixed(1) +
         (h.breakEvenDay !== null ? ' (day ' + h.breakEvenDay + ')' : '')) + '</title></circle>';
     });
     const hMonth = report.horizon;
     let horizonMark = '';
     if (hMonth > 0 && hMonth <= months) {
+      const right = px(hMonth) > W * 0.53;
       horizonMark = '<line class="scrub-line" x1="' + px(hMonth).toFixed(1) + '" x2="' + px(hMonth).toFixed(1) +
         '" y1="' + m.t + '" y2="' + py(0).toFixed(1) + '"/>' +
-        '<text class="cross-text" x="' + (px(hMonth) + 6).toFixed(1) + '" y="' + (m.t + 10) + '">' + hMonth + ' month horizon</text>';
+        '<text class="cross-text" x="' + (px(hMonth) + (right ? -6 : 6)).toFixed(1) + '" y="' + (m.t + 10) +
+        '" text-anchor="' + (right ? 'end' : 'start') + '">' + hMonth + ' month horizon</text>';
     }
 
     const desc = 'Cumulative cost over 60 months. Cloud rent reaches ' + fmtMoney0(report.series.saas[months]) +

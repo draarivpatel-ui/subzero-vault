@@ -307,6 +307,11 @@
     return Math.min(hi, Math.max(lo, v));
   }
 
+  const compactDollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 });
+  function axisDollars(value) {
+    return value >= 10000 ? compactDollars.format(value) : '$' + Math.round(value).toLocaleString('en-US');
+  }
+
   function normalizeCalc(input) {
     const d = defaultCalcState();
     const s = (input && typeof input === 'object') ? input : {};
@@ -314,16 +319,16 @@
     const prices = {};
     SUBSCRIPTION_CATALOG.forEach(function (c) {
       const raw = sp[c.id] !== undefined ? sp[c.id] : d.prices[c.id];
-      prices[c.id] = raw === null || raw === '' ? null : Math.max(0, num(raw, 0));
+      prices[c.id] = raw === null || raw === '' ? null : clamp(num(raw, 0), 0, 1e6);
     });
     const known = new Set(SUBSCRIPTION_CATALOG.map(function (c) { return c.id; }));
     return {
       enabled: (Array.isArray(s.enabled) ? s.enabled : d.enabled).filter(function (id) { return known.has(id); }),
       prices: prices,
-      hardwareCost: Math.max(0, num(s.hardwareCost, d.hardwareCost)),
-      watts: Math.max(0, num(s.watts, d.watts)),
-      kwhPrice: Math.max(0, num(s.kwhPrice, d.kwhPrice)),
-      extraAnnual: Math.max(0, num(s.extraAnnual, d.extraAnnual)),
+      hardwareCost: clamp(num(s.hardwareCost, d.hardwareCost), 0, 1e9),
+      watts: clamp(num(s.watts, d.watts), 0, 1e6),
+      kwhPrice: clamp(num(s.kwhPrice, d.kwhPrice), 0, 1e3),
+      extraAnnual: clamp(num(s.extraAnnual, d.extraAnnual), 0, 1e9),
       saasGrowth: clamp(num(s.saasGrowth, d.saasGrowth), 0, 1),
       powerGrowth: clamp(num(s.powerGrowth, d.powerGrowth), 0, 1),
       reinvest: clamp(num(s.reinvest, d.reinvest), 0, 1),
@@ -750,7 +755,8 @@
 
   function safePath(p, fallback) {
     const s = String(p == null ? '' : p).trim();
-    return /^[A-Za-z0-9_./~ -]+$/.test(s) && s.length <= 120 ? s : fallback;
+    if (!/^[A-Za-z0-9_./~ -]+$/.test(s) || s.length > 120) return fallback;
+    return /^(?:\/|~\/|\.\.?\/)/.test(s) ? s : './' + s;
   }
 
   function safeDomain(d) {
@@ -800,8 +806,8 @@
       y.push('      VAULT_BACKUP_CRON: ' + JSON.stringify(cron));
     }
     y.push('    volumes:');
-    y.push('      - ' + dataPath + ':/data');
-    if (cronOk) y.push('      - ' + backupPath + ':/backups');
+    y.push('      - ' + JSON.stringify(dataPath + ':/data'));
+    if (cronOk) y.push('      - ' + JSON.stringify(backupPath + ':/backups'));
     y.push('    healthcheck:');
     y.push('      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen(\'http://127.0.0.1:8090/health\', timeout=3)"]');
     y.push('      interval: 30s');
@@ -1010,6 +1016,7 @@
     decodeEntities: decodeEntities,
     wordCount: wordCount,
     tokenizeDocument: tokenizeDocument,
+    axisDollars: axisDollars,
     buildInvertedIndex: buildInvertedIndex,
     bm25Idf: bm25Idf,
     bm25Search: bm25Search,

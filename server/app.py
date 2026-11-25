@@ -295,15 +295,15 @@ def normalize_calc(inp):
     sp = s.get("prices") if isinstance(s.get("prices"), dict) else {}
     for cid, default in CATALOG:
         raw = sp[cid] if cid in sp else default
-        prices[cid] = None if raw is None or raw == "" else max(0.0, _num(raw, 0.0))
+        prices[cid] = None if raw is None or raw == "" else _clamp(_num(raw, 0.0), 0, 1e6)
     en = s.get("enabled")
     return {
         "enabled": [i for i in (en if isinstance(en, (list, tuple)) else DEFAULT_ENABLED) if i in known],
         "prices": prices,
-        "hardwareCost": max(0.0, _num(s.get("hardwareCost"), 120.0)),
-        "watts": max(0.0, _num(s.get("watts"), 6.0)),
-        "kwhPrice": max(0.0, _num(s.get("kwhPrice"), 0.17)),
-        "extraAnnual": max(0.0, _num(s.get("extraAnnual"), 0.0)),
+        "hardwareCost": _clamp(_num(s.get("hardwareCost"), 120.0), 0, 1e9),
+        "watts": _clamp(_num(s.get("watts"), 6.0), 0, 1e6),
+        "kwhPrice": _clamp(_num(s.get("kwhPrice"), 0.17), 0, 1e3),
+        "extraAnnual": _clamp(_num(s.get("extraAnnual"), 0.0), 0, 1e9),
         "saasGrowth": _clamp(_num(s.get("saasGrowth"), 0.0), 0.0, 1.0),
         "powerGrowth": _clamp(_num(s.get("powerGrowth"), 0.0), 0.0, 1.0),
         "reinvest": _clamp(_num(s.get("reinvest"), 0.0), 0.0, 1.0),
@@ -1239,7 +1239,7 @@ def backup_loop(store, directory, cron_expr, stop=None):
 # HTTP
 # ---------------------------------------------------------------------------
 
-STATIC_RE = re.compile(r"^/(index\.html|styles\.css|engine\.js|app\.js|samples\.js|favicon\.svg|fonts/[\w.-]+\.woff2|img/[\w.-]+\.(png|svg|jpg|webp))$")
+STATIC_RE = re.compile(r"^/(index\.html|styles\.css|engine\.js|app\.js|samples\.js|vault-lab\.js|favicon\.svg|fonts/[\w.-]+\.woff2|img/[\w.-]+\.(png|svg|jpg|webp))$")
 MIME = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".svg": "image/svg+xml", ".woff2": "font/woff2", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
 
@@ -1799,8 +1799,11 @@ def selftest():
         ck.eq(st, 200, "savings survives a 1e999 string")
         st, _, _ = _call(base, "POST", "/api/savings", {"watts": "1e999", "years": "1e999"}, token)
         ck.eq(st, 200, "savings survives 1e999 watts and years")
-        st, _, _ = _call(base, "POST", "/api/savings", {"hardwareCost": 1e308}, token)
+        st, _, body = _call(base, "POST", "/api/savings",
+                            {"hardwareCost": 1e308, "watts": 1e308, "kwhPrice": 1e308}, token)
         ck.eq(st, 200, "savings survives a 1e308 float")
+        ck.eq((json.loads(body)["hardwareCost"], json.loads(body)["powerAnnual"]), (1e9, 8760000000),
+              "savings caps oversized inputs before multiplying them")
 
         foreign = {"version": 1,
                    "articles": [{"id": str(art["id"]), "title": "Foreign page", "url": "https://foreign.example/p",
@@ -1845,13 +1848,16 @@ def selftest():
         st, _, body = _call(base, "GET", "/api/highlights", token=token)
         ck.eq(json.loads(body)["highlights"], [], "highlights go with their article")
 
-        for static in ("/", "/index.html", "/styles.css", "/engine.js", "/app.js"):
-            st, hdr, body = _call(base, "GET", static)
-            if os.path.exists(os.path.join(cfg.web_dir, "index.html")):
-                ck.eq(st, 200, "static %s" % static)
-        st, _, body = _call(base, "GET", "/")
         if os.path.exists(os.path.join(cfg.web_dir, "index.html")):
+            st, _, body = _call(base, "GET", "/")
+            ck.eq(st, 200, "static index")
             ck.ok(b'name="subzero-server"' in body, "served index tells the page a vault is behind it")
+            scripts = re.findall(rb'<script\s+src="([\w.-]+)"', body)
+            ck.ok(b"vault-lab.js" in scripts, "served index loads the lab")
+            for static in ["/styles.css"] + ["/" + src.decode("ascii") for src in scripts]:
+                st, hdr, data = _call(base, "GET", static)
+                ck.eq(st, 200, "static %s" % static)
+                ck.ok(data and hdr.get("Content-Type") == MIME[os.path.splitext(static)[1]], "usable asset %s" % static)
         st, _, _ = _call(base, "GET", "/server/app.py")
         ck.eq(st, 404, "server source is not served")
         st, _, _ = _call(base, "GET", "/..%2fetc%2fpasswd")

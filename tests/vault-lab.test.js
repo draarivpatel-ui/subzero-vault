@@ -1011,17 +1011,24 @@ test('renderSensitivityRows: one row per profile with four shock cells', () => {
   assert.equal((html.match(/day 0|day \d+|never/g) || []).length, 20);
 });
 
-test('renderTcoChart: deterministic SVG with grid, lines and focusable markers', () => {
+test('renderTcoChart: deterministic SVG labels markers without adding noninteractive tab stops', () => {
   const rep = L.buildLabReport(L.defaultLabState(), refCalc());
   const svg = L.renderTcoChart(rep, { width: 640 });
   assert.ok(svg.startsWith('<svg'));
   assert.ok(/class="line line-saas"/.test(svg));
   assert.ok(/class="line line-hw hw-pi5 is-sel"/.test(svg));
   assert.equal((svg.match(/cross-dot/g) || []).length, 5);
-  assert.ok(svg.includes('tabindex="0"'));
+  assert.ok(!svg.includes('tabindex'));
+  assert.ok(svg.includes('<title>Raspberry Pi 5 kit breaks even at month'));
   assert.ok(svg.includes('<desc id="lab-tco-desc">'));
   assert.ok(svg.includes('scrub-line'));
   assert.equal(svg, L.renderTcoChart(rep, { width: 640 }));
+});
+
+test('renderTcoChart: the longest horizon label faces inward on a phone', () => {
+  const rep = L.buildLabReport({ horizon: 60 }, refCalc());
+  const svg = L.renderTcoChart(rep, { width: 280 });
+  assert.match(svg, /class="cross-text"[^>]+text-anchor="end">60 month horizon/);
 });
 
 test('renderTcoChart: a horizon past 60 months draws no horizon marker', () => {
@@ -1148,7 +1155,7 @@ test('app: a malformed #szv= hash falls back to defaults and says so', async () 
   const app = App.createApp(env.doc, env.win, { storage: env.storage });
   await app.init();
   assert.deepEqual(app.state.lab, L.defaultLabState());
-  assert.ok(env.els['lab-status'].textContent.includes('malformed'));
+  assert.ok(env.els['lab-status'].textContent.includes('invalid'));
   assert.ok(env.els['lab-status']._classes.has('is-error'));
 });
 

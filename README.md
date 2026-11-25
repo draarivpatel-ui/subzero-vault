@@ -15,7 +15,7 @@ docker compose up -d
 open http://localhost:8090
 ```
 
-The server needs no configuration. The database lives in `./data`, backups land in `./backups` every night at 03:00, and the container restarts itself after a reboot. To change anything, copy `.env.example` to `.env`.
+The server needs no configuration and binds to localhost by default. The database lives in `./data`, backups land in `./backups` every night at 03:00, and the container restarts itself after a reboot. Copy `.env.example` to `.env` to change the settings. An empty `VAULT_BACKUP_CRON` turns scheduled backups off.
 
 On a fresh install the vault is empty. The results panel has a button that loads eight sample articles so you can try search, highlights and review straight away.
 
@@ -29,15 +29,15 @@ python3 server/app.py --port 8090
 
 **Search.** Okapi BM25 ranking with `k1 = 1.5` and `b = 0.75`. Title words count three times and tag words twice. Results show their score and a snippet with the matching words marked.
 
-**Highlights and review.** Select text in the reader to save a highlight. Highlights come back on the SuperMemo SM-2 schedule, with four answers (again, hard, good, easy). Each button shows how many days away it would push the card.
+**Highlights and review.** Select text in the reader or paste an exact passage in the highlight field. You can add a review cue before saving. Highlights come back on the SuperMemo SM-2 schedule, with four answers (again, hard, good, easy). Each button shows how long until the next review.
 
 **Readable text.** Paste a page's HTML and a readability pass keeps the story and drops navigation, sidebars and footers. With a token set, the server also gives you a bookmarklet that saves the page you are looking at.
 
 **Bookmarks in and out.** Imports the HTML file every browser can export (the Netscape bookmark format), keeps folders, tags, dates and notes, skips `javascript:` links and repeats. Exports the same format. JSON export too.
 
-**Rent audit.** Twelve subscriptions, each with a tick and an editable monthly price, set against a box you own, its wattage and your electricity rate. It shows rent per year, power per year, the saving, the day the box pays for itself and a 36 month chart of both lines. The scenario lives in the page address, so a link shares it.
+**Rent audit.** Twelve subscriptions, each with a tick and an editable monthly price, set against a box you own, its wattage and your electricity rate. The payback day uses starting rates; the 36-month chart also includes any projected price rises. You can share the scenario as a link.
 
-**TCO and retention lab.** Five ways to run the vault (Raspberry Pi 5 kit, used N100 mini PC, refurbished ThinkCentre, two bay NAS, or a `$6` a month VPS) priced against the same subscription bill at 12, 36 and 60 months, with break-even recomputed under plus or minus 30% power and plus or minus 20% rent shocks. A second panel stress-tests the internals: BM25 `k1` and `b` sliders show how much the sample ranking actually moves (Kendall tau and top-3 overlap), and an SM-2 simulator plots ninety days of review backlog for four grading strategies. Every lab report exports as JSON, CSV and Markdown carrying one SHA-256 checksum, and a `#szv=` bookmark restores the whole lab. Sixteen self-tests run inside the page.
+**TCO and retention lab.** Five ways to run the vault (Raspberry Pi 5 kit, used N100 mini PC, refurbished ThinkCentre, two bay NAS, or a `$6` a month VPS) priced against the same subscription bill at 12, 36 and 60 months, with break-even recomputed under plus or minus 30% power and plus or minus 20% rent changes. A second panel stress-tests the internals: BM25 `k1` and `b` controls show how much the sample ranking moves (Kendall tau and top-3 overlap), and an SM-2 simulator plots ninety days of review backlog for four grading strategies. Every lab report exports as JSON, CSV and Markdown with one SHA-256 checksum. A `#szv=` share link restores the prices and lab settings, but omits the search query. Sixteen self-tests run inside the page.
 
 **Packaging studio.** Pick the port, volume folder, backup schedule and front door (nothing, Caddy with automatic HTTPS, or Tailscale). Get a matching `docker-compose.yml`, `.env` and `Caddyfile` to copy or download.
 
@@ -112,11 +112,11 @@ If you expose the server beyond your own machine, set a token and put it behind 
 ## Tests
 
 ```
-npm test                       # 384 engine, lab and page tests, Node 18 or newer, no dependencies
-python3 server/app.py --selftest   # 260 checks, then a live server is started and every endpoint is called
+nice -n 19 node --test --test-concurrency=1 tests/
+nice -n 19 python3 server/app.py --selftest
 ```
 
-The Node suite covers the maths (hand computed BM25 and SM-2 values), readability, bookmarks, the Compose generator, page markup rules (labels, live regions, meta tags, colour tokens) and the page controller against a small fake DOM. The lab suite adds the SHA-256 vectors (checked against node:crypto), the five-box comparator, the Kendall tau and SM-2 simulators, the `#szv=` codec under malformed and hostile tokens, CSV formula escaping, checksum parity across the JSON, CSV and Markdown exports, and the tamper demo. The Python self test replays `tests/fixtures/parity.json` so the two implementations stay in step.
+The browser app has no build step or npm dependencies. The Node suite covers the maths, readability, bookmarks, Compose generation, page semantics and controller behavior. The lab suite checks the report checksum, comparator, diagnostics and share codec. The Python self-test replays `tests/fixtures/parity.json`, starts an HTTP server, checks the API, and loads the JavaScript referenced by the served page.
 
 ## Layout
 

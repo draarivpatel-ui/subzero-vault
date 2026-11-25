@@ -50,7 +50,7 @@ test('page has an inline SVG favicon, a noscript fallback and a skip link', () =
   assert.ok(/<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,/.test(HTML));
   assert.ok(/<noscript>[\s\S]*JavaScript[\s\S]*<\/noscript>/.test(HTML));
   assert.ok(/<a class="skip-link" href="#main">/.test(HTML));
-  assert.ok(/<main id="main">/.test(HTML));
+  assert.ok(/<main id="main" tabindex="-1">/.test(HTML));
 });
 
 test('page has exactly one h1 and heading levels never skip', () => {
@@ -168,9 +168,18 @@ test('local files referenced from index.html and the Dockerfile exist', () => {
   const refs = (HTML.match(/(?:src|href)="([^"#:]+\.[a-z0-9]+)"/g) || []).map((m) => /"([^"]+)"/.exec(m)[1]);
   refs.forEach((r) => assert.ok(fs.existsSync(path.join(ROOT, r)), r));
   const docker = read('Dockerfile');
+  const assetCopies = new Set();
   docker.split('\n').filter((l) => /^COPY /.test(l)).forEach((l) => {
-    l.replace(/^COPY\s+/, '').split(/\s+/).slice(0, -1).forEach((src) => assert.ok(fs.existsSync(path.join(ROOT, src)), 'Dockerfile COPY ' + src));
+    const sources = l.trim().split(/\s+/).slice(1);
+    const destination = sources.pop();
+    sources.forEach((src) => {
+      assert.ok(fs.existsSync(path.join(ROOT, src)), 'Dockerfile COPY ' + src);
+      if (destination === './' || destination === './' + src) assetCopies.add(src);
+    });
   });
+  for (const ref of ['index.html', ...refs]) {
+    assert.ok(assetCopies.has(ref) || assetCopies.has(ref.split('/')[0]), 'Dockerfile packages ' + ref);
+  }
 });
 
 test('the hero ledger in the static HTML matches the engine defaults', () => {
@@ -183,6 +192,8 @@ test('the hero ledger in the static HTML matches the engine defaults', () => {
 test('compose file, env example and gitignore keep secrets out', () => {
   const compose = read('docker-compose.yml');
   assert.ok(/restart: unless-stopped/.test(compose) && /healthcheck:/.test(compose) && /build: \./.test(compose));
+  assert.ok(compose.includes('127.0.0.1:${VAULT_PORT:-8090}:8090'));
+  assert.ok(compose.includes('${VAULT_BACKUP_CRON-0 3 * * *}'), 'honor an explicitly empty schedule');
   assert.ok(!/\t/.test(compose));
   assert.ok(/^VAULT_TOKEN=$/m.test(read('.env.example')));
   assert.ok(/^\.env$/m.test(read('.gitignore')));
@@ -261,6 +272,18 @@ test('renderBody turns the markers into headings, lists and quotes and escapes m
 test('renderBody marks saved highlights inside paragraphs', () => {
   const html = App.renderBody('Alpha beta gamma', [{ text: 'beta' }]);
   assert.ok(html.includes('<mark class="saved">beta</mark>'));
+});
+
+test('overlapping and cross-paragraph highlights preserve literal text and valid markup', () => {
+  const html = App.renderBody('a & mark   saved\n\n## across <here>', [
+    { text: 'mark saved' }, { text: 'saved across' }, { text: '<here>' }
+  ]);
+  assert.equal(html, '<p>a &amp; <mark class="saved">mark   saved</mark></p><h4><mark class="saved">across</mark> <mark class="saved">&lt;here&gt;</mark></h4>');
+});
+
+test('zero up-front cost does not imply savings on an expensive box', () => {
+  const calc = { hardwareCost: 0, extraAnnual: 500 };
+  assert.match(App.ledgerFoot(E.computeSubscriptionSavings(calc), calc), /Owning costs .* more in the first year/);
 });
 
 test('renderReader escapes a hostile title and url', () => {
@@ -374,14 +397,14 @@ test('choosing a preset fills the cost and watts', async () => {
   env.els['hw-preset'].value = 'spare';
   env.els['hw-preset'].fire('change');
   assert.equal(env.els['hw-cost'].value, '0');
-  assert.ok(env.els['ledger-foot'].textContent.includes('costs nothing up front'));
+  assert.ok(env.els['ledger-foot'].textContent.includes('No up-front cost.'));
 });
 
 test('an empty numeric box counts as zero instead of snapping back', async () => {
   const { env } = await boot();
   env.els['hw-cost'].value = '';
   env.els['hw-cost'].fire('input');
-  assert.ok(env.els['ledger-foot'].textContent.includes('costs nothing up front'));
+  assert.ok(env.els['ledger-foot'].textContent.includes('No up-front cost.'));
 });
 
 test('the month scrubber updates the readout', async () => {
@@ -406,7 +429,23 @@ test('copy scenario puts a link on the clipboard', async () => {
   await sleep(10);
   assert.ok(env.copied[0].startsWith('https://aariv.me/subzero-vault/'));
   assert.ok(env.copied[0].endsWith('#audit'));
-  assert.equal(env.els['scenario-status'].textContent, 'Link copied.');
+  assert.equal(env.els['scenario-status'].textContent, 'Scenario link copied.');
+});
+
+test('clipboard denial exposes the complete scenario URL for manual copying', async () => {
+  const { env } = await boot();
+  env.win.navigator.clipboard.writeText = async () => { throw new Error('Denied'); };
+  env.doc.execCommand = () => false;
+  env.els['hw-cost'].value = '185';
+  env.els['hw-cost'].fire('input');
+  env.els['copy-scenario'].fire('click');
+  await sleep(10);
+  const field = env.els['scenario-link'];
+  const url = new URL(field.value);
+  assert.equal(field.hidden, false);
+  assert.ok(field.focused);
+  assert.equal(url.hash, '#audit');
+  assert.equal(E.decodeCalcState(url.searchParams.get('c')).hardwareCost, 185);
 });
 
 test('the vault starts with eight samples, three highlights due, and opens the first article', async () => {
@@ -448,11 +487,26 @@ test('tag chips filter the list', async () => {
 });
 
 test('clicking a result opens it in the reader', async () => {
-  const { env } = await boot();
+  const { env, app } = await boot();
   env.clickOn({ action: 'open', id: 's3' });
   await sleep(20);
   assert.ok(env.els.reader.innerHTML.includes('How a DNS sinkhole'));
-  assert.ok(env.els.results.innerHTML.includes('data-id="s3" aria-current="true"'));
+  assert.equal(app.state.selectedId, 's3');
+});
+
+test('an earlier slow reader response cannot overwrite the latest article', async () => {
+  const { env, app } = await boot();
+  const get = app.state.store.get;
+  let finish;
+  app.state.store.get = (id) => id !== 's3' ? get(id) : new Promise((resolve) => { finish = () => resolve(get(id)); });
+  env.clickOn({ action: 'open', id: 's3' });
+  env.clickOn({ action: 'open', id: 's4' });
+  await sleep(10);
+  const latest = env.els.reader.innerHTML;
+  assert.match(latest, /data-id="s4"/);
+  finish();
+  await sleep(10);
+  assert.equal(env.els.reader.innerHTML, latest);
 });
 
 test('selecting text and pressing the button saves a highlight that is due today', async () => {
@@ -460,6 +514,7 @@ test('selecting text and pressing the button saves a highlight that is due today
   env.clickOn({ action: 'open', id: 's3' });
   await sleep(20);
   env.selectText('A sinkhole is a filter, not a firewall.');
+  env.win._selection = null; // The selection can disappear when the optional cue field takes focus.
   env.els['hl-note'].value = 'filter';
   env.els['hl-save'].fire('click');
   await sleep(20);
@@ -473,8 +528,31 @@ test('pressing highlight with nothing selected explains what to do', async () =>
   env.win._selection = null;
   env.els['hl-save'].fire('click');
   await sleep(10);
-  assert.ok(env.els['vault-status'].textContent.includes('Select some text'));
-  assert.ok(env.els['vault-status']._classes.has('is-error'));
+  assert.ok(env.els['hl-status'].textContent.includes('Select some text'));
+  assert.ok(env.els['hl-status']._classes.has('is-error'));
+});
+
+test('a selection starting in the article and ending outside it is not saved', async () => {
+  const { env } = await boot();
+  env.clickOn({ action: 'open', id: 's3' });
+  await sleep(20);
+  env.selectText('A sinkhole is a filter, not a firewall.', true);
+  env.els['hl-save'].fire('click');
+  await sleep(10);
+  assert.equal(env.els['review-count'].textContent, '3 due');
+  assert.equal(env.els['hl-text'].value, '');
+  assert.match(env.els['hl-status'].textContent, /Select some text/);
+});
+
+test('a typed highlight can include a dash from a plain-text paragraph', async () => {
+  const { env, app } = await boot();
+  const saved = await app.state.store.add({ title: 'Notes', body: 'Some notes:\n- A line in the paragraph' });
+  env.clickOn({ action: 'open', id: saved.id });
+  await sleep(10);
+  env.els['hl-text'].value = '- A line in the paragraph';
+  env.els['hl-save'].fire('click');
+  await sleep(10);
+  assert.match(env.els.reader.innerHTML, /<mark class="saved">- A line in the paragraph<\/mark>/);
 });
 
 test('review reveals the answer, rates it with SM-2 and moves to the next card', async () => {
@@ -668,7 +746,7 @@ test('connecting to a server switches the store and the pill', async () => {
   env.els['srv-url'].value = 'http://localhost:8090/';
   env.els['srv-token'].value = 'tok';
   assert.equal(await app.connect('http://localhost:8090/', 'tok', false), true);
-  assert.equal(env.els['storage-label'].textContent, 'Storage: your server');
+  assert.equal(env.els['storage-label'].textContent, 'Your server');
   assert.equal(env.els['storage-pill']._attrs['data-mode'], 'server');
   assert.ok(env.els.results.innerHTML.includes('Server article'));
   assert.equal(env.els['clip-box'].hidden, false);
@@ -690,7 +768,14 @@ test('an unreachable server leaves browser storage in place and says why', async
   await app.init();
   assert.equal(await app.connect('http://localhost:8090', '', false), false);
   assert.ok(env.els['srv-status'].textContent.includes('Could not reach'));
-  assert.equal(env.els['storage-label'].textContent, 'Storage: this browser');
+  assert.equal(env.els['storage-label'].textContent, 'This browser');
+});
+
+test('an invalid server address is rejected without contacting another origin', async () => {
+  const { env, app } = await boot();
+  assert.equal(await app.connect('https://vault.example/?location=other', '', false), false);
+  assert.equal(app.state.store.kind, 'local');
+  assert.match(env.els['srv-status'].textContent, /without credentials, a query or a fragment/);
 });
 
 test('disconnecting returns to browser storage with the samples intact', async () => {
@@ -699,7 +784,7 @@ test('disconnecting returns to browser storage with the samples intact', async (
   await app.init();
   await app.connect('http://localhost:8090', '', false);
   await app.disconnect();
-  assert.equal(env.els['storage-label'].textContent, 'Storage: this browser');
+  assert.equal(env.els['storage-label'].textContent, 'This browser');
   assert.equal((env.els.results.innerHTML.match(/class="result"/g) || []).length, 8);
   assert.equal(env.els['clip-box'].hidden, true);
 });
@@ -724,6 +809,30 @@ test('LocalStore reports a full browser storage instead of failing silently', as
   const full = { getItem: () => null, setItem: () => { throw new Error('quota'); } };
   const st = App.LocalStore(full, () => '2026-10-25');
   await assert.rejects(() => st.add({ title: 'x', body: 'y' }), /storage is full or blocked/);
+});
+
+test('a storage write failure rolls back edits, reviews, restores and resets in the live vault', async () => {
+  const { storage } = createEnvironment();
+  const st = App.LocalStore(storage, () => '2026-10-25');
+  const article = await st.add({ title: 'Personal notes', url: 'https://example.test/personal', body: 'Keep this.' });
+  const highlight = await st.addHighlight(article.id, 'Keep this.', '');
+  const before = await st.exportJson();
+  storage.setItem = () => { throw new Error('Quota exceeded'); };
+  await assert.rejects(st.add({ title: 'Edited', url: article.url, body: 'Unsaved' }), /not saved/);
+  await assert.rejects(st.remove(article.id), /not saved/);
+  await assert.rejects(st.review(highlight.id, 5, '2026-10-25'), /not saved/);
+  await assert.rejects(st.importJson(JSON.stringify({ articles: [{ id: 'test', title: 'Unsaved' }], highlights: [] })), /not saved/);
+  await assert.rejects(st.reset(), /not saved/);
+  assert.equal(await st.exportJson(), before);
+});
+
+test('canceling sample reset preserves saved browser articles', async () => {
+  const { env, app } = await boot();
+  const saved = await app.state.store.add({ title: 'Personal notes', body: 'Keep this.' });
+  env.win.confirm = () => false;
+  env.els['reset-demo'].fire('click');
+  await sleep(10);
+  assert.equal((await app.state.store.get(saved.id)).title, 'Personal notes');
 });
 
 test('LocalStore refuses non http addresses', async () => {
@@ -771,10 +880,10 @@ test('highlights are listed per article and reviews touch only the chosen one', 
   assert.equal((await st.due('2026-10-25')).length, 2);
 });
 
-test('a new highlight reads as new and a reviewed one shows its interval', () => {
+test('a new highlight reads as new and a reviewed one shows its actual due date', () => {
   const html = App.renderHighlights([{ id: 'a', text: 'x', note: '', due: '2026-10-25', interval: 0 }, { id: 'b', text: 'y', note: '', due: '2026-11-01', interval: 6 }]);
-  assert.ok(html.includes('new, due 2026-10-25'));
-  assert.ok(html.includes('next review 2026-11-01, every 6 days'));
+  assert.ok(html.includes('New, due 2026-10-25'));
+  assert.ok(html.includes('Next review 2026-11-01'));
 });
 
 test('ServerStore sends no body on reads and no query when listing every highlight', async () => {
