@@ -43,11 +43,11 @@
     return E.SUBSCRIPTION_CATALOG.map(function (s) {
       const price = calc.prices[s.id];
       return '<tr class="' + (on.has(s.id) ? '' : 'is-off') + '">' +
-        '<td><input type="checkbox" id="sub-chk-' + s.id + '" data-kind="chk" data-id="' + s.id + '" aria-labelledby="sub-name-' + s.id + '"' + (on.has(s.id) ? ' checked' : '') + '></td>' +
+        '<td><label class="sub-check"><input type="checkbox" id="sub-chk-' + s.id + '" data-kind="chk" data-id="' + s.id + '" aria-labelledby="sub-name-' + s.id + '"' + (on.has(s.id) ? ' checked' : '') + '><span class="print-value">' + (on.has(s.id) ? 'included' : 'not included') + '</span></label></td>' +
         '<td><span class="sub-name"><span id="sub-name-' + s.id + '">' + esc(s.name) + '</span>' +
         '<span class="sub-basis">' + esc(s.basis) + '</span></span></td>' +
         '<td class="num"><input type="number" id="sub-price-' + s.id + '" data-kind="price" data-id="' + s.id + '" min="0" max="1000000" step="0.01" inputmode="decimal"' +
-        ' aria-label="Monthly price for ' + esc(s.name) + ' in dollars" placeholder="enter"' + (price === null ? '' : ' value="' + Number(price).toFixed(2) + '"') + '></td></tr>';
+        ' aria-label="Monthly price for ' + esc(s.name) + ' in dollars" placeholder="enter"' + (price === null ? '' : ' value="' + Number(price).toFixed(2) + '"') + '><span class="print-value">' + (price === null ? 'not set' : '$' + Number(price).toFixed(2)) + '</span></td></tr>';
     }).join('');
   }
 
