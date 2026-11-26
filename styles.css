@@ -671,3 +671,11 @@ mark.saved { background: var(--green-wash); box-shadow: inset 0 -2px 0 var(--gre
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .chart-box[data-anim="1"] .line, .chart-box[data-anim="1"] .area-saas { stroke-dasharray: none; stroke-dashoffset: 0; opacity: 1; }
 }
+
+@media print {
+  body { background: var(--surface); color: var(--ink); }
+  .site-nav, .cta-row, button, input, select, textarea, summary::-webkit-details-marker { display: none !important; }
+  .panel, .card, .ledger, .code, .table-wrap, pre { box-shadow: none !important; break-inside: avoid; }
+  .table-wrap, pre, .code { overflow: visible !important; max-height: none !important; white-space: pre-wrap; }
+  a { color: inherit; text-decoration: none; }
+}

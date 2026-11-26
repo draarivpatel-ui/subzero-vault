@@ -1070,3 +1070,9 @@ test('a string ef reads as the 2.5 default, matching the Python twin', () => {
   assert.equal(out.interval, 15);
   assert.equal(E.scheduleSm2Review({ repetitions: 2, interval: 6, ef: 3.0 }, 5, '2026-11-21').interval, 18);
 });
+
+test('DOM 087: printable audit and reader surfaces have print cleanup', () => {
+  assert.match(CSS, /@media print\s*\{/);
+  assert.match(CSS, /@media print\s*\{[\s\S]*button, input, select/);
+  assert.match(CSS, /@media print\s*\{[\s\S]*overflow:\s*visible/);
+});
