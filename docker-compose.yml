@@ -11,7 +11,7 @@ services:
     environment:
       VAULT_DB: /data/vault.db
       VAULT_TOKEN: ${VAULT_TOKEN:-}
-      VAULT_ALLOWED_ORIGINS: ${VAULT_ALLOWED_ORIGINS:-https://aariv.me}
+      VAULT_ALLOWED_ORIGINS: ${VAULT_ALLOWED_ORIGINS:-https://aariv.xyz}
       VAULT_BACKUP_DIR: /backups
       VAULT_BACKUP_CRON: ${VAULT_BACKUP_CRON-0 3 * * *}
       TZ: ${TZ:-UTC}

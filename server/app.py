@@ -1651,7 +1651,7 @@ def selftest():
     os.environ["VAULT_QUIET"] = "1"
     store = Store(os.path.join(tmp, "vault.db"))
     token = "selftest-token"
-    cfg = Config(store, token=token, origins=["https://aariv.me"])
+    cfg = Config(store, token=token, origins=["https://aariv.xyz"])
     httpd = serve(cfg, "127.0.0.1", 0)
     base = "http://127.0.0.1:%d" % httpd.server_address[1]
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -1666,10 +1666,10 @@ def selftest():
         ck.eq(st, 401, "api with wrong token is refused")
         st, _, _ = _call(base, "GET", "/api/articles", token=token, headers={"Origin": "https://evil.example"})
         ck.eq(st, 403, "disallowed origin is refused")
-        st, hdr, _ = _call(base, "OPTIONS", "/api/articles", headers={"Origin": "https://aariv.me", "Access-Control-Request-Method": "POST",
+        st, hdr, _ = _call(base, "OPTIONS", "/api/articles", headers={"Origin": "https://aariv.xyz", "Access-Control-Request-Method": "POST",
                                                                        "Access-Control-Request-Private-Network": "true"})
         ck.eq(st, 204, "preflight status")
-        ck.eq(hdr.get("Access-Control-Allow-Origin"), "https://aariv.me", "preflight echoes allowed origin")
+        ck.eq(hdr.get("Access-Control-Allow-Origin"), "https://aariv.xyz", "preflight echoes allowed origin")
         ck.eq(hdr.get("Access-Control-Allow-Private-Network"), "true", "preflight allows private network access")
         st, hdr, _ = _call(base, "OPTIONS", "/api/articles", headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"})
         ck.ok("Access-Control-Allow-Origin" not in hdr, "preflight hides CORS from other origins")
@@ -1957,7 +1957,7 @@ def main(argv=None):
         print(store.backup(args.backup))
         return 0
 
-    origins = os.environ.get("VAULT_ALLOWED_ORIGINS", "https://aariv.me").split(",")
+    origins = os.environ.get("VAULT_ALLOWED_ORIGINS", "https://aariv.xyz").split(",")
     cfg = Config(store, os.environ.get("VAULT_TOKEN", ""), origins, os.environ.get("VAULT_WEB_DIR"))
     cron = os.environ.get("VAULT_BACKUP_CRON", "").strip()
     bdir = os.environ.get("VAULT_BACKUP_DIR", "").strip()

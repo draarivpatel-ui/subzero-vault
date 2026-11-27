@@ -101,7 +101,7 @@ All routes are under `/api`. With `VAULT_TOKEN` set, send `Authorization: Bearer
 | --- | --- | --- |
 | `VAULT_PORT` | `8090` | host port in Compose, listen port in the server |
 | `VAULT_TOKEN` | empty | bearer token. Empty means the API only answers requests addressed to `localhost`, `127.0.0.1` or `::1` (other names and LAN addresses get a 403) |
-| `VAULT_ALLOWED_ORIGINS` | `https://aariv.me` | websites allowed to call the API from a browser |
+| `VAULT_ALLOWED_ORIGINS` | `https://aariv.xyz` | websites allowed to call the API from a browser |
 | `VAULT_DB` | `./data/vault.db` | SQLite file |
 | `VAULT_BACKUP_DIR`, `VAULT_BACKUP_CRON` | `/backups`, `0 3 * * *` in Compose | scheduled backups, 5 field cron, 14 kept |
 
