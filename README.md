@@ -112,7 +112,7 @@ If you expose the server beyond your own machine, set a token and put it behind 
 ## Tests
 
 ```
-nice -n 19 node --test --test-concurrency=1 tests/
+nice -n 19 node --test --test-concurrency=1
 nice -n 19 python3 server/app.py --selftest
 ```
 
